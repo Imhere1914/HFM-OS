@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * AI OS theme tokens. Two brand themes (sc = blue/dark-ish light, hfm =
+ * wellness/violet light). The active theme is set via data-brand on <html>.
+ * Module screens consume the --theme-* vars + the primary palette.
+ */
+
+:root,
+:root[data-brand='sc'] {
+  --theme-bg: #f6f8fc;
+  --theme-card: #ffffff;
+  --theme-border: #e3e8f0;
+  --theme-input: #ffffff;
+  --theme-hover: #eef2fb;
+  --theme-text: #16223b;
+  --theme-muted: #6b7794;
+  --theme-accent: #2f6df6;
+  --theme-success: #1f9d57;
+  --theme-warning: #d98a00;
+  --theme-danger: #d64545;
+
+  --primary-50: #f3f6fd;
+  --primary-100: #e6edfb;
+  --primary-200: #cfdcf6;
+  --primary-300: #a9c0ee;
+  --primary-400: #7a9ce3;
+  --primary-500: #2f6df6;
+  --primary-600: #2357d4;
+  --primary-700: #1d46aa;
+  --primary-800: #1b3c89;
+  --primary-900: #1a366f;
+  --primary-950: #122247;
+
+  --tabbar-h: 0px;
+}
+
+:root[data-brand='hfm'] {
+  --theme-bg: #faf8fc;
+  --theme-card: #ffffff;
+  --theme-border: #ece5f2;
+  --theme-input: #ffffff;
+  --theme-hover: #f4eefa;
+  --theme-text: #2a2440;
+  --theme-muted: #837a96;
+  --theme-accent: #7c6f9b;
+  --theme-success: #3f9d7a;
+  --theme-warning: #c98a3a;
+  --theme-danger: #c75c5c;
+
+  --primary-50: #faf7fc;
+  --primary-100: #f3ecf8;
+  --primary-200: #e7dcf0;
+  --primary-300: #d2bfe2;
+  --primary-400: #b297cd;
+  --primary-500: #7c6f9b;
+  --primary-600: #6a5d88;
+  --primary-700: #574c70;
+  --primary-800: #48405c;
+  --primary-900: #3d364d;
+  --primary-950: #261f33;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-family:
+    system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
