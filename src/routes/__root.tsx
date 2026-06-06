@@ -2,14 +2,15 @@ import { createRootRoute, Link, Outlet, useRouterState } from '@tanstack/react-r
 import { useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  AiBrain01Icon,
   Briefcase01Icon,
   Calendar01Icon,
   Chat01Icon,
   Copy01Icon,
   DashboardSquare01Icon,
+  FlowSquareIcon,
   Layout01Icon,
   ImageAdd01Icon,
-  AiBrain01Icon,
   Mail01Icon,
   Menu01Icon,
   PlugSocketIcon,
@@ -63,6 +64,7 @@ function navItems(brandId: string): { section: string; items: NavItem[] }[] {
       section: 'Operate',
       items: [
         { to: '/projects', label: projectsLabel, icon: Briefcase01Icon },
+        { to: '/automations', label: 'Automations', icon: FlowSquareIcon },
         { to: '/avatars', label: 'Avatars', icon: UserCircleIcon },
         { to: '/plugins', label: 'Plugins', icon: PlugSocketIcon },
       ],

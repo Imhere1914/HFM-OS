@@ -1,4 +1,5 @@
 import type { Hono } from 'hono'
+import { triggerAutomations } from '../lib/automation-engine'
 import {
   addMessage, approveDraft, createConversation, getConversation,
   isConvStatus, isMessageRole, listConversations, updateConversation,
@@ -25,6 +26,11 @@ export function registerConversations(app: Hono): void {
       contact_id: typeof b.contact_id === 'string' ? b.contact_id : null,
       contact_name: typeof b.contact_name === 'string' ? b.contact_name : null,
       subject: typeof b.subject === 'string' ? b.subject : null,
+    })
+    void triggerAutomations('new_conversation', {
+      conversation_id: conversation.id,
+      contact_id: conversation.contact_id ?? undefined,
+      contact_name: conversation.contact_name ?? undefined,
     })
     return c.json({ conversation }, 201)
   })

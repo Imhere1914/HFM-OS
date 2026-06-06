@@ -3,6 +3,7 @@ import {
   createAppointment, deleteAppointment, getAppointment, isAppointmentStatus,
   listAppointments, updateAppointment,
 } from '../stores/appointments-store'
+import { triggerAutomations } from '../lib/automation-engine'
 
 export function registerAppointments(app: Hono): void {
   app.get('/api/appointments', (c) => {
@@ -25,6 +26,11 @@ export function registerAppointments(app: Hono): void {
       location: typeof b.location === 'string' ? b.location : '',
       notes: typeof b.notes === 'string' ? b.notes : '',
       brand: typeof b.brand === 'string' ? b.brand : undefined,
+    })
+    void triggerAutomations('new_appointment', {
+      appointment_id: appointment.id,
+      contact_id: appointment.contact_id ?? undefined,
+      contact_name: appointment.contact_name ?? undefined,
     })
     return c.json({ appointment }, 201)
   })
