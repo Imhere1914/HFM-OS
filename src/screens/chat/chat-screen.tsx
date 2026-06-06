@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { SentIcon, Mic01Icon, AiMagicIcon } from '@hugeicons/core-free-icons'
 import { sendChat, type ChatMessage } from '@/lib/chat-api'
@@ -12,6 +13,8 @@ const SUGGESTIONS = [
   'Write a social post about our services',
 ]
 
+type ChatStatus = { backend: string; model: string; live: boolean }
+
 export function ChatScreen() {
   const brand = useBrand()
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -21,6 +24,12 @@ export function ChatScreen() {
   const [voiceOut, setVoiceOut] = useState(false)
   const recogRef = useRef<unknown>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const { data: status } = useQuery<ChatStatus>({
+    queryKey: ['chat-status'],
+    queryFn: () => fetch('/api/chat/status').then(r => r.json()),
+    staleTime: 30_000,
+  })
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -101,7 +110,15 @@ export function ChatScreen() {
           </div>
           <div>
             <h1 className="text-[13px] font-semibold text-[var(--theme-text)]">{brand.shortName} Assistant</h1>
-            <p className="text-[11px] text-[var(--theme-muted)]">Powered by Hermes</p>
+            <div className="flex items-center gap-1.5">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: status?.live ? 'var(--theme-success)' : 'var(--theme-muted)' }}
+              />
+              <p className="text-[11px] text-[var(--theme-muted)]">
+                {status ? (status.live ? status.model : 'offline mode') : 'connecting…'}
+              </p>
+            </div>
           </div>
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--theme-muted)]">

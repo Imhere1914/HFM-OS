@@ -16,6 +16,7 @@ import {
   PlugSocketIcon,
   Share04Icon,
   StarIcon,
+  Target02Icon,
   UserCircleIcon,
   UserGroupIcon,
 } from '@hugeicons/core-free-icons'
@@ -55,6 +56,7 @@ function navItems(brandId: string): { section: string; items: NavItem[] }[] {
       items: [
         { to: '/social', label: 'Social', icon: Share04Icon },
         { to: '/campaigns', label: 'Campaigns', icon: Mail01Icon },
+        { to: '/calendar', label: 'Content Calendar', icon: Calendar01Icon },
         { to: '/pages', label: 'Pages', icon: Layout01Icon },
         { to: '/templates', label: 'Templates', icon: Copy01Icon },
         { to: '/media', label: 'Media Studio', icon: ImageAdd01Icon },
@@ -65,6 +67,7 @@ function navItems(brandId: string): { section: string; items: NavItem[] }[] {
       items: [
         { to: '/projects', label: projectsLabel, icon: Briefcase01Icon },
         { to: '/automations', label: 'Automations', icon: FlowSquareIcon },
+        { to: '/strategy', label: 'Strategy', icon: Target02Icon },
         { to: '/avatars', label: 'Avatars', icon: UserCircleIcon },
         { to: '/plugins', label: 'Plugins', icon: PlugSocketIcon },
       ],

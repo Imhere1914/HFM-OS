@@ -1,0 +1,18 @@
+[Unit]
+Description=AI OS — HFM (Holistic Functional Care)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-os
+EnvironmentFile=/opt/ai-os/.env.hfm
+ExecStart=/usr/bin/node node_modules/.bin/tsx server/index.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-os-hfm
+
+[Install]
+WantedBy=multi-user.target

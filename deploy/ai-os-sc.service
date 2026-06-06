@@ -1,0 +1,18 @@
+[Unit]
+Description=AI OS — SC (Simple Connect)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-os
+EnvironmentFile=/opt/ai-os/.env.sc
+ExecStart=/usr/bin/node node_modules/.bin/tsx server/index.ts
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-os-sc
+
+[Install]
+WantedBy=multi-user.target
