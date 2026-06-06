@@ -6,10 +6,11 @@ import { listPosts } from '../stores/social-store'
 import { listCampaigns } from '../stores/campaigns-store'
 import { listPages } from '../stores/pages-store'
 import { listNotifications } from '../stores/notifications-store'
+import { listInvoices } from '../stores/invoices-store'
 
 export interface Highlight {
   id: string
-  kind: 'lead' | 'conversation' | 'appointment' | 'social' | 'campaign' | 'page'
+  kind: 'lead' | 'conversation' | 'appointment' | 'social' | 'campaign' | 'page' | 'invoice'
   priority: 'attention' | 'info'
   emoji: string
   title: string
@@ -99,6 +100,22 @@ function buildHighlights(brand: string | null): Highlight[] {
       title: `Page live: ${pg.title}`,
       detail: `/${pg.slug}`,
       link: '/pages', at: pg.updated_at ?? null,
+    })
+  }
+
+  // Overdue or long-outstanding invoices
+  for (const inv of listInvoices(brand ?? undefined)) {
+    if (inv.status !== 'sent') continue
+    const due = inv.due_date ? Date.parse(inv.due_date) : NaN
+    const isOverdue = !Number.isNaN(due) && due < now
+    const isSentLong = !Number.isNaN(Date.parse(inv.updated_at)) && Date.parse(inv.updated_at) < now - 7 * 24 * 60 * 60 * 1000
+    if (!isOverdue && !isSentLong) continue
+    const amt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(inv.total)
+    out.push({
+      id: `inv-${inv.id}`, kind: 'invoice', priority: 'attention', emoji: '💰',
+      title: isOverdue ? `Overdue invoice: ${inv.invoice_number}` : `Invoice unpaid: ${inv.invoice_number}`,
+      detail: `${inv.contact_name} · ${amt}`,
+      link: '/payments', at: inv.updated_at,
     })
   }
 

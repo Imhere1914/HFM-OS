@@ -5,6 +5,8 @@ import { listAppointments } from '../stores/appointments-store'
 import { listCampaigns } from '../stores/campaigns-store'
 import { listPosts } from '../stores/social-store'
 import { listProjects } from '../stores/projects-store'
+import { listForms } from '../stores/forms-store'
+import { listInvoices } from '../stores/invoices-store'
 
 export function registerStats(app: Hono): void {
   app.get('/api/stats', (c) => {
@@ -17,6 +19,8 @@ export function registerStats(app: Hono): void {
     const campaigns = listCampaigns({})
     const posts = listPosts({})
     const projects = listProjects({})
+    const forms = listForms(brand ?? undefined)
+    const invoices = listInvoices(brand ?? undefined)
 
     const now = Date.now()
     const week = 7 * 24 * 60 * 60 * 1000
@@ -92,6 +96,16 @@ export function registerStats(app: Hono): void {
       },
       projects: {
         active: activeProjects,
+      },
+      forms: {
+        total: forms.length,
+        active: forms.filter((f) => f.status === 'active').length,
+      },
+      payments: {
+        paid: Math.round(invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + i.total, 0) * 100) / 100,
+        outstanding: Math.round(invoices.filter((i) => i.status === 'sent').reduce((s, i) => s + i.total, 0) * 100) / 100,
+        draft: invoices.filter((i) => i.status === 'draft').length,
+        total: invoices.length,
       },
     })
   })

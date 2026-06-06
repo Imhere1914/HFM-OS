@@ -13,10 +13,12 @@ import {
   ImageAdd01Icon,
   Mail01Icon,
   Menu01Icon,
+  Money01Icon,
   PlugSocketIcon,
   Share04Icon,
   StarIcon,
   Target02Icon,
+  TaskEdit01Icon,
   UserCircleIcon,
   UserGroupIcon,
 } from '@hugeicons/core-free-icons'
@@ -49,6 +51,8 @@ function navItems(brandId: string): { section: string; items: NavItem[] }[] {
         { to: '/conversations', label: 'Conversations', icon: Chat01Icon },
         { to: '/contacts', label: contactsLabel, icon: UserGroupIcon },
         { to: '/appointments', label: 'Appointments', icon: Calendar01Icon },
+        { to: '/scheduling', label: 'Scheduling', icon: Calendar01Icon },
+        { to: '/forms', label: 'Forms', icon: TaskEdit01Icon },
       ],
     },
     {
@@ -66,6 +70,7 @@ function navItems(brandId: string): { section: string; items: NavItem[] }[] {
       section: 'Operate',
       items: [
         { to: '/projects', label: projectsLabel, icon: Briefcase01Icon },
+        { to: '/payments', label: 'Payments', icon: Money01Icon },
         { to: '/automations', label: 'Automations', icon: FlowSquareIcon },
         { to: '/strategy', label: 'Strategy', icon: Target02Icon },
         { to: '/avatars', label: 'Avatars', icon: UserCircleIcon },
