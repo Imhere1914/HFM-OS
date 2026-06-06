@@ -77,51 +77,98 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     to === '/' ? pathname === '/' : pathname.startsWith(to)
 
   return (
-    <div className="flex h-full w-60 flex-col border-r border-[var(--theme-border)] bg-[var(--theme-card)]">
+    <div
+      className="flex h-full w-[230px] flex-col border-r"
+      style={{
+        background: 'var(--theme-sidebar-bg)',
+        borderColor: 'var(--theme-sidebar-border)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+      }}
+    >
       {/* Brand header */}
-      <div className="flex items-center gap-2.5 px-4 py-4">
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-white"
-          style={{ background: brand.accentColor }}
-        >
-          {brand.shortName}
-        </div>
-        <div className="leading-tight">
-          <div className="text-sm font-bold text-[var(--theme-text)]">
-            {brand.name}
+      <div className="px-4 pb-3 pt-5">
+        <div className="flex items-center gap-3">
+          {/* Logo mark — gradient circle */}
+          <div
+            className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold tracking-tight text-white shadow-sm"
+            style={{
+              background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 65%, #7b3fe4))`,
+              boxShadow: `0 2px 10px color-mix(in srgb, ${brand.accentColor} 38%, transparent)`,
+            }}
+          >
+            {brand.shortName}
           </div>
-          <div className="text-[10px] text-[var(--theme-muted)]">AI Operating System</div>
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold leading-tight text-[var(--theme-text)]">
+              {brand.name}
+            </div>
+            <div className="text-[10px] font-medium leading-tight tracking-wide text-[var(--theme-muted)]">
+              AI Operating System
+            </div>
+          </div>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-4">
+      <nav className="flex-1 overflow-y-auto px-2.5 pb-4">
         {sections.map((sec) => (
-          <div key={sec.section} className="mb-3">
-            <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-muted)]">
+          <div key={sec.section} className="mb-4">
+            <div className="mb-1 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--theme-muted)] opacity-70">
               {sec.section}
             </div>
-            {sec.items.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={onNavigate}
-                className={cn(
-                  'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
-                  isActive(item.to)
-                    ? 'font-medium text-white'
-                    : 'text-[var(--theme-muted)] hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]',
-                )}
-                style={
-                  isActive(item.to) ? { background: brand.accentColor } : undefined
-                }
-              >
-                <HugeiconsIcon icon={item.icon} size={17} strokeWidth={1.8} />
-                {item.label}
-              </Link>
-            ))}
+            {sec.items.map((item) => {
+              const active = isActive(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={onNavigate}
+                  className={cn(
+                    'group flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-[450] transition-all duration-150',
+                    active
+                      ? 'text-[var(--theme-accent)]'
+                      : 'text-[var(--theme-muted)] hover:text-[var(--theme-text)]',
+                  )}
+                  style={
+                    active
+                      ? { background: 'var(--theme-accent-soft)' }
+                      : undefined
+                  }
+                >
+                  <span
+                    className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md transition-all duration-150"
+                    style={
+                      active
+                        ? {
+                            background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 70%, #7b3fe4))`,
+                            color: 'white',
+                            boxShadow: `0 2px 8px color-mix(in srgb, ${brand.accentColor} 35%, transparent)`,
+                          }
+                        : { background: 'var(--theme-hover)', color: 'var(--theme-muted)' }
+                    }
+                  >
+                    <HugeiconsIcon icon={item.icon} size={14} strokeWidth={active ? 2 : 1.7} />
+                  </span>
+                  {item.label}
+                </Link>
+              )
+            })}
           </div>
         ))}
       </nav>
+
+      {/* Footer version pill */}
+      <div className="px-4 pb-4">
+        <div className="flex items-center gap-1.5 rounded-lg bg-[var(--theme-hover)] px-2.5 py-1.5">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: 'var(--theme-accent)' }}
+          />
+          <span className="text-[11px] text-[var(--theme-muted)]">
+            Powered by Hermes
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -129,7 +176,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 function RootLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--theme-bg)]">
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--theme-bg-grad)', backgroundAttachment: 'fixed' }}>
       {/* Desktop sidebar */}
       <aside className="hidden md:block">
         <Sidebar />
@@ -139,7 +186,7 @@ function RootLayout() {
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
-            className="absolute inset-0 bg-black/40"
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
           <div className="absolute left-0 top-0 h-full">
@@ -150,7 +197,14 @@ function RootLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
-        <div className="flex items-center gap-2 border-b border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-2 md:hidden">
+        <div
+          className="flex items-center gap-2 border-b px-3 py-2 md:hidden"
+          style={{
+            background: 'var(--theme-sidebar-bg)',
+            borderColor: 'var(--theme-sidebar-border)',
+            backdropFilter: 'blur(16px)',
+          }}
+        >
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-lg p-1.5 text-[var(--theme-muted)] hover:bg-[var(--theme-hover)]"

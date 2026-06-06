@@ -3,77 +3,146 @@
 @tailwind utilities;
 
 /*
- * AI OS theme tokens. Two brand themes (sc = blue/dark-ish light, hfm =
- * wellness/violet light). The active theme is set via data-brand on <html>.
- * Module screens consume the --theme-* vars + the primary palette.
+ * AI OS — Soft AI-Native theme
+ * Airy, light, approachable. Subtle mesh gradients, whisper-soft borders,
+ * Inter type. SC = cool blue-white. HFM = warm cream-lavender.
  */
 
+/* ─── SC (default) ─────────────────────────────────────────────── */
 :root,
 :root[data-brand='sc'] {
-  --theme-bg: #f6f8fc;
-  --theme-card: #ffffff;
-  --theme-border: #e3e8f0;
-  --theme-input: #ffffff;
-  --theme-hover: #eef2fb;
-  --theme-text: #16223b;
-  --theme-muted: #6b7794;
-  --theme-accent: #2f6df6;
-  --theme-success: #1f9d57;
-  --theme-warning: #d98a00;
-  --theme-danger: #d64545;
+  --theme-bg: #f4f7ff;
+  --theme-bg-grad:
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(79, 126, 248, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 80%, rgba(124, 111, 210, 0.07) 0%, transparent 55%),
+    #f4f7ff;
+  --theme-card: rgba(255, 255, 255, 0.85);
+  --theme-card-solid: #ffffff;
+  --theme-border: rgba(199, 214, 248, 0.70);
+  --theme-input: rgba(255, 255, 255, 0.90);
+  --theme-hover: rgba(79, 126, 248, 0.07);
+  --theme-text: #0d1630;
+  --theme-muted: #5a6888;
+  --theme-accent: #4f7ef8;
+  --theme-accent-soft: rgba(79, 126, 248, 0.12);
+  --theme-glow: 0 0 0 3px rgba(79, 126, 248, 0.18), 0 0 24px rgba(79, 126, 248, 0.12);
+  --theme-success: #1fa85c;
+  --theme-warning: #d08600;
+  --theme-danger: #d44444;
+  --theme-sidebar-bg: rgba(248, 251, 255, 0.94);
+  --theme-sidebar-border: rgba(199, 214, 248, 0.55);
 
-  --primary-50: #f3f6fd;
-  --primary-100: #e6edfb;
-  --primary-200: #cfdcf6;
-  --primary-300: #a9c0ee;
-  --primary-400: #7a9ce3;
-  --primary-500: #2f6df6;
-  --primary-600: #2357d4;
-  --primary-700: #1d46aa;
-  --primary-800: #1b3c89;
-  --primary-900: #1a366f;
-  --primary-950: #122247;
+  --primary-50:  #eef3ff;
+  --primary-100: #dde7ff;
+  --primary-200: #c0cffe;
+  --primary-300: #98b1fc;
+  --primary-400: #7095f9;
+  --primary-500: #4f7ef8;
+  --primary-600: #3062e8;
+  --primary-700: #234fcb;
+  --primary-800: #1c3fa2;
+  --primary-900: #183582;
+  --primary-950: #0f1f50;
 
   --tabbar-h: 0px;
 }
 
+/* ─── HFM ──────────────────────────────────────────────────────── */
 :root[data-brand='hfm'] {
-  --theme-bg: #faf8fc;
-  --theme-card: #ffffff;
-  --theme-border: #ece5f2;
-  --theme-input: #ffffff;
-  --theme-hover: #f4eefa;
-  --theme-text: #2a2440;
-  --theme-muted: #837a96;
-  --theme-accent: #7c6f9b;
-  --theme-success: #3f9d7a;
+  --theme-bg: #fdf7ff;
+  --theme-bg-grad:
+    radial-gradient(ellipse 70% 55% at 15% 5%,  rgba(160, 132, 220, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 85% 85%, rgba(230, 180, 210, 0.08) 0%, transparent 55%),
+    #fdf7ff;
+  --theme-card: rgba(255, 255, 255, 0.87);
+  --theme-card-solid: #ffffff;
+  --theme-border: rgba(210, 190, 238, 0.65);
+  --theme-input: rgba(255, 255, 255, 0.90);
+  --theme-hover: rgba(160, 132, 220, 0.08);
+  --theme-text: #1a1228;
+  --theme-muted: #6e5f88;
+  --theme-accent: #8b7dbf;
+  --theme-accent-soft: rgba(139, 125, 191, 0.13);
+  --theme-glow: 0 0 0 3px rgba(139, 125, 191, 0.20), 0 0 24px rgba(139, 125, 191, 0.12);
+  --theme-success: #3aaa7e;
   --theme-warning: #c98a3a;
   --theme-danger: #c75c5c;
+  --theme-sidebar-bg: rgba(252, 248, 255, 0.94);
+  --theme-sidebar-border: rgba(210, 190, 238, 0.50);
 
-  --primary-50: #faf7fc;
-  --primary-100: #f3ecf8;
-  --primary-200: #e7dcf0;
-  --primary-300: #d2bfe2;
-  --primary-400: #b297cd;
-  --primary-500: #7c6f9b;
-  --primary-600: #6a5d88;
-  --primary-700: #574c70;
-  --primary-800: #48405c;
-  --primary-900: #3d364d;
-  --primary-950: #261f33;
+  --primary-50:  #f6f0ff;
+  --primary-100: #ede0ff;
+  --primary-200: #dcc4fe;
+  --primary-300: #c59bf9;
+  --primary-400: #ac76f3;
+  --primary-500: #8b7dbf;
+  --primary-600: #7665aa;
+  --primary-700: #60528d;
+  --primary-800: #4f4474;
+  --primary-900: #423a5f;
+  --primary-950: #28213c;
+
+  --tabbar-h: 0px;
 }
 
-html,
-body,
-#root {
+/* ─── Base ─────────────────────────────────────────────────────── */
+html, body, #root {
   height: 100%;
   margin: 0;
 }
 
 body {
-  background: var(--theme-bg);
+  background: var(--theme-bg-grad);
+  background-attachment: fixed;
   color: var(--theme-text);
-  font-family:
-    system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* ─── Glass card utility ───────────────────────────────────────── */
+.glass-card {
+  background: var(--theme-card);
+  border: 1px solid var(--theme-border);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* ─── AI glow ring — assistant surfaces, focused inputs ───────── */
+.ai-glow {
+  box-shadow: var(--theme-glow);
+}
+
+/* ─── Gradient primary button ──────────────────────────────────── */
+.btn-primary {
+  background: linear-gradient(
+    135deg,
+    var(--theme-accent),
+    color-mix(in srgb, var(--theme-accent) 72%, #7b3fe4)
+  );
+  color: white;
+  border: none;
+  box-shadow: 0 2px 14px color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 22px color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-primary:disabled {
+  opacity: 0.48;
+}
+
+/* ─── Scrollbar — whisper thin ─────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--theme-border);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-accent) 40%, var(--theme-border));
 }

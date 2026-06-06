@@ -22,32 +22,50 @@ export function ScreenShell({
   children: ReactNode
 }) {
   return (
-    <div className="h-full overflow-y-auto bg-[var(--theme-bg)]">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col px-6 py-6">
-        <header className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <HugeiconsIcon icon={icon} size={20} className="text-[var(--theme-accent)]" />
-            <h1 className="text-lg font-semibold text-[var(--theme-text)]">{title}</h1>
-            {typeof count === 'number' && (
-              <span className="text-xs text-[var(--theme-muted)]">({count})</span>
-            )}
+    <div
+      className="h-full overflow-y-auto"
+      style={{ background: 'var(--theme-bg-grad)', backgroundAttachment: 'fixed' }}
+    >
+      <div className="mx-auto flex w-full max-w-[1060px] flex-col px-6 py-7">
+
+        {/* Page header */}
+        <header className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-xl"
+              style={{ background: 'var(--theme-accent-soft)', color: 'var(--theme-accent)' }}
+            >
+              <HugeiconsIcon icon={icon} size={18} strokeWidth={1.8} />
+            </div>
+            <div>
+              <h1 className="text-[15px] font-semibold leading-tight text-[var(--theme-text)]">
+                {title}
+                {typeof count === 'number' && (
+                  <span className="ml-2 text-[13px] font-normal text-[var(--theme-muted)]">
+                    {count}
+                  </span>
+                )}
+              </h1>
+              {subtitle && (
+                <p className="text-[12px] text-[var(--theme-muted)]">{subtitle}</p>
+              )}
+            </div>
           </div>
+
           <div className="flex items-center gap-2">
             {onRefresh && (
               <button
                 onClick={onRefresh}
-                className="rounded-lg p-1.5 text-[var(--theme-muted)] transition-colors hover:bg-[var(--theme-hover)]"
+                className="rounded-lg p-1.5 text-[var(--theme-muted)] transition-colors hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
                 title="Refresh"
               >
-                <HugeiconsIcon icon={RefreshIcon} size={16} />
+                <HugeiconsIcon icon={RefreshIcon} size={15} />
               </button>
             )}
             {action}
           </div>
         </header>
-        {subtitle && (
-          <p className="mb-4 -mt-2 text-xs text-[var(--theme-muted)]">{subtitle}</p>
-        )}
+
         {children}
       </div>
     </div>

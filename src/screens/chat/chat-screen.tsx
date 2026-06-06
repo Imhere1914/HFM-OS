@@ -83,30 +83,64 @@ export function ChatScreen() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-[var(--theme-bg)]">
-      <header className="flex items-center justify-between border-b border-[var(--theme-border)] px-6 py-4">
-        <div className="flex items-center gap-2">
-          <HugeiconsIcon icon={AiMagicIcon} size={20} className="text-[var(--theme-accent)]" />
-          <h1 className="text-lg font-semibold text-[var(--theme-text)]">{brand.shortName} Assistant</h1>
+    <div className="flex h-full flex-col" style={{ background: 'var(--theme-bg-grad)', backgroundAttachment: 'fixed' }}>
+      {/* Header */}
+      <header
+        className="flex items-center justify-between border-b px-6 py-3.5"
+        style={{ background: 'var(--theme-sidebar-bg)', borderColor: 'var(--theme-sidebar-border)', backdropFilter: 'blur(16px)' }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{
+              background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 65%, #7b3fe4))`,
+              boxShadow: `0 2px 8px color-mix(in srgb, ${brand.accentColor} 38%, transparent)`,
+            }}
+          >
+            <HugeiconsIcon icon={AiMagicIcon} size={14} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-[13px] font-semibold text-[var(--theme-text)]">{brand.shortName} Assistant</h1>
+            <p className="text-[11px] text-[var(--theme-muted)]">Powered by Hermes</p>
+          </div>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--theme-muted)]">
-          <input type="checkbox" checked={voiceOut} onChange={(e) => setVoiceOut(e.target.checked)} />
+        <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--theme-muted)]">
+          <input
+            type="checkbox"
+            checked={voiceOut}
+            onChange={(e) => setVoiceOut(e.target.checked)}
+            className="accent-[var(--theme-accent)]"
+          />
           Speak replies
         </label>
       </header>
 
+      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-[720px] flex-col gap-4">
+
+          {/* Empty state */}
           {messages.length === 0 && (
-            <div className="flex flex-col items-center gap-4 py-12 text-center">
-              <HugeiconsIcon icon={AiMagicIcon} size={40} className="text-[var(--theme-accent)]" />
-              <p className="text-[var(--theme-text)]">Hi! I'm your {brand.name} assistant. Ask me to manage anything across your business.</p>
-              <div className="flex flex-wrap justify-center gap-2">
+            <div className="flex flex-col items-center gap-5 py-14 text-center">
+              <div
+                className="flex h-14 w-14 items-center justify-center rounded-2xl"
+                style={{
+                  background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 60%, #7b3fe4))`,
+                  boxShadow: `0 4px 24px color-mix(in srgb, ${brand.accentColor} 35%, transparent)`,
+                }}
+              >
+                <HugeiconsIcon icon={AiMagicIcon} size={26} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-[15px] font-semibold text-[var(--theme-text)]">Hi, I'm your {brand.name} assistant</h2>
+                <p className="mt-1 text-[13px] text-[var(--theme-muted)]">Ask me to manage anything across your business</p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2 pt-1">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     onClick={() => submit(s)}
-                    className="rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-sm text-[var(--theme-muted)] hover:bg-[var(--theme-hover)]"
+                    className="rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3.5 py-1.5 text-[12px] text-[var(--theme-muted)] backdrop-blur-sm transition-all hover:border-[var(--theme-accent)] hover:text-[var(--theme-accent)]"
                   >
                     {s}
                   </button>
@@ -114,36 +148,99 @@ export function ChatScreen() {
               </div>
             </div>
           )}
+
+          {/* Message bubbles */}
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {m.role === 'assistant' && (
+                <div
+                  className="mr-2.5 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
+                  style={{
+                    background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 65%, #7b3fe4))`,
+                  }}
+                >
+                  <HugeiconsIcon icon={AiMagicIcon} size={12} className="text-white" />
+                </div>
+              )}
               <div
-                className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm ${
+                className="max-w-[78%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed"
+                style={
                   m.role === 'user'
-                    ? 'bg-[var(--theme-accent)] text-white'
-                    : 'border border-[var(--theme-border)] bg-[var(--theme-card)] text-[var(--theme-text)]'
-                }`}
+                    ? {
+                        background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 72%, #7b3fe4))`,
+                        color: 'white',
+                        boxShadow: `0 2px 14px color-mix(in srgb, ${brand.accentColor} 30%, transparent)`,
+                        borderBottomRightRadius: '6px',
+                      }
+                    : {
+                        background: 'var(--theme-card)',
+                        border: '1px solid var(--theme-border)',
+                        color: 'var(--theme-text)',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                        backdropFilter: 'blur(10px)',
+                        borderBottomLeftRadius: '6px',
+                      }
+                }
               >
                 {m.content}
               </div>
             </div>
           ))}
-          {busy && <div className="text-sm text-[var(--theme-muted)]">Thinking…</div>}
+
+          {/* Typing indicator */}
+          {busy && (
+            <div className="flex items-center gap-2.5">
+              <div
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 65%, #7b3fe4))` }}
+              >
+                <HugeiconsIcon icon={AiMagicIcon} size={12} className="text-white" />
+              </div>
+              <div
+                className="flex gap-1 rounded-2xl border border-[var(--theme-border)] px-4 py-3"
+                style={{ background: 'var(--theme-card)', backdropFilter: 'blur(10px)' }}
+              >
+                {[0, 1, 2].map((d) => (
+                  <span
+                    key={d}
+                    className="h-1.5 w-1.5 rounded-full animate-bounce"
+                    style={{
+                      background: 'var(--theme-accent)',
+                      animationDelay: `${d * 0.15}s`,
+                      opacity: 0.6,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="border-t border-[var(--theme-border)] px-6 py-4">
-        <div className="mx-auto flex w-full max-w-[760px] items-end gap-2">
+      {/* Input bar */}
+      <div
+        className="border-t px-6 py-4"
+        style={{ background: 'var(--theme-sidebar-bg)', borderColor: 'var(--theme-sidebar-border)', backdropFilter: 'blur(16px)' }}
+      >
+        <div className="mx-auto flex w-full max-w-[720px] items-end gap-2.5">
           <button
             onClick={toggleVoice}
-            className={`shrink-0 rounded-xl border p-2.5 transition-colors ${
+            className="shrink-0 rounded-xl border p-2.5 transition-all"
+            style={
               listening
-                ? 'border-[var(--theme-accent)] bg-[var(--theme-accent)] text-white'
-                : 'border-[var(--theme-border)] text-[var(--theme-muted)] hover:bg-[var(--theme-hover)]'
-            }`}
+                ? {
+                    background: `linear-gradient(135deg, ${brand.accentColor}, color-mix(in srgb, ${brand.accentColor} 65%, #7b3fe4))`,
+                    borderColor: 'transparent',
+                    color: 'white',
+                    boxShadow: `0 2px 12px color-mix(in srgb, ${brand.accentColor} 40%, transparent)`,
+                  }
+                : { borderColor: 'var(--theme-border)', color: 'var(--theme-muted)', background: 'var(--theme-card)' }
+            }
             title="Voice input"
           >
-            <HugeiconsIcon icon={Mic01Icon} size={18} />
+            <HugeiconsIcon icon={Mic01Icon} size={17} />
           </button>
+
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -153,17 +250,30 @@ export function ChatScreen() {
                 submit(input)
               }
             }}
-            placeholder={listening ? 'Listening…' : 'Message your assistant…'}
+            placeholder={listening ? 'Listening…' : 'Message your assistant… (⏎ to send)'}
             rows={1}
-            className="max-h-32 flex-1 resize-none rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] px-4 py-2.5 text-sm text-[var(--theme-text)] outline-none focus:border-[var(--theme-accent)]"
+            className="max-h-36 flex-1 resize-none rounded-xl border px-4 py-2.5 text-[13px] leading-relaxed outline-none transition-all"
+            style={{
+              background: 'var(--theme-input)',
+              borderColor: 'var(--theme-border)',
+              color: 'var(--theme-text)',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-accent)'
+              e.currentTarget.style.boxShadow = 'var(--theme-glow)'
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'var(--theme-border)'
+              e.currentTarget.style.boxShadow = 'none'
+            }}
           />
+
           <button
             onClick={() => submit(input)}
             disabled={!input.trim() || busy}
-            className="shrink-0 rounded-xl bg-[var(--theme-accent)] p-2.5 text-white disabled:opacity-50"
-            title="Send"
+            className="btn-primary shrink-0 rounded-xl p-2.5"
           >
-            <HugeiconsIcon icon={SentIcon} size={18} />
+            <HugeiconsIcon icon={SentIcon} size={17} />
           </button>
         </div>
       </div>
