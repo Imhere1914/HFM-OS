@@ -27,6 +27,7 @@ import {
 import { useBrand } from '@/contexts/BrandContext'
 import { cn } from '@/lib/utils'
 import { NotificationsBell } from '@/components/NotificationsBell'
+import { CommandPalette, useCommandPalette } from '@/components/CommandPalette'
 
 type NavItem = {
   to: string
@@ -289,6 +290,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 function RootLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const { open: cmdOpen, close: cmdClose } = useCommandPalette()
 
   // Public routes render without the app shell (no sidebar, no nav)
   if (pathname.startsWith('/book')) {
@@ -296,6 +298,8 @@ function RootLayout() {
   }
 
   return (
+    <>
+    <CommandPalette open={cmdOpen} onClose={cmdClose} />
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--theme-bg-grad)', backgroundAttachment: 'fixed' }}>
       {/* Desktop sidebar */}
       <aside className="hidden md:block">
@@ -337,6 +341,7 @@ function RootLayout() {
         </main>
       </div>
     </div>
+    </>
   )
 }
 

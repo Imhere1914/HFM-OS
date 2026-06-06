@@ -25,6 +25,7 @@ import { useBrand } from '@/contexts/BrandContext'
 import { fetchContacts } from '@/lib/contacts-api'
 import { fetchHighlights } from '@/lib/highlights-api'
 import { fetchStats } from '@/lib/stats-api'
+import { OnboardingChecklist } from '@/components/OnboardingChecklist'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
 
@@ -141,6 +142,11 @@ function Dashboard() {
             <StatCard label="Forms" value={stats.forms?.active ?? 0} sub={`${stats.forms?.total ?? 0} total`} to="/forms" />
           </div>
         )}
+
+        {/* ── Onboarding checklist ─────────────────────────────── */}
+        <div className="mb-6">
+          <OnboardingChecklist />
+        </div>
 
         {/* ── Module tiles ─────────────────────────────────────── */}
         <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-[var(--theme-muted)] opacity-75">

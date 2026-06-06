@@ -6,8 +6,10 @@ import { Link } from '@tanstack/react-router'
 import {
   Add01Icon,
   Building01Icon,
+  CheckmarkCircle01Icon,
   Delete01Icon,
   Mail01Icon,
+  MultiplicationSignIcon,
   Search01Icon,
   SmartPhone01Icon,
   Upload01Icon,
@@ -164,6 +166,8 @@ export function ContactsScreen() {
   const [showImport, setShowImport] = useState(false)
   const [editing, setEditing] = useState<Contact | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkStage, setBulkStage] = useState<ContactStage | ''>('')
 
   const contactsQuery = useQuery({ queryKey: QUERY_KEY, queryFn: () => fetchContacts() })
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: QUERY_KEY })
@@ -179,6 +183,25 @@ export function ContactsScreen() {
     onError: (e) => toast(e instanceof Error ? e.message : 'Failed', { type: 'error' }),
   })
   const deleteMutation = useMutation({ mutationFn: (id: string) => deleteContact(id), onSuccess: () => { invalidate(); toast('Deleted') } })
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => { for (const id of ids) await deleteContact(id) },
+    onSuccess: () => { invalidate(); setSelected(new Set()); toast('Deleted') },
+  })
+  const bulkStageMutation = useMutation({
+    mutationFn: async ({ ids, stage }: { ids: string[]; stage: ContactStage }) => {
+      for (const id of ids) await updateContact(id, { stage })
+    },
+    onSuccess: () => { invalidate(); setSelected(new Set()); toast('Stage updated') },
+  })
+
+  function toggleSelect(id: string) {
+    setSelected(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+  function toggleAll() {
+    if (selected.size === filtered.length) setSelected(new Set())
+    else setSelected(new Set(filtered.map(c => c.id)))
+  }
 
   const filtered = useMemo(() => {
     let list = contactsQuery.data ?? []
@@ -265,6 +288,42 @@ export function ContactsScreen() {
         </div>
       )}
 
+      {/* ── Bulk action bar ── */}
+      {viewMode === 'list' && selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-2.5 shadow-2xl"
+            style={{ backdropFilter: 'blur(20px)' }}>
+            <span className="text-xs font-semibold text-[var(--theme-text)]">{selected.size} selected</span>
+            <div className="h-4 w-px bg-[var(--theme-border)]" />
+            <select
+              value={bulkStage}
+              onChange={e => setBulkStage(e.target.value as ContactStage | '')}
+              className="rounded-lg border border-[var(--theme-border)] bg-[var(--theme-input)] px-2 py-1 text-xs text-[var(--theme-text)]"
+            >
+              <option value="">Change stage…</option>
+              {CONTACT_STAGES.map(s => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+            </select>
+            {bulkStage && (
+              <button
+                onClick={() => { bulkStageMutation.mutate({ ids: Array.from(selected), stage: bulkStage as ContactStage }); setBulkStage('') }}
+                className="rounded-lg px-3 py-1 text-xs font-medium text-white"
+                style={{ background: 'var(--theme-accent)' }}
+              >Apply</button>
+            )}
+            <div className="h-4 w-px bg-[var(--theme-border)]" />
+            <button
+              onClick={() => { if (confirm(`Delete ${selected.size} contacts?`)) bulkDeleteMutation.mutate(Array.from(selected)) }}
+              className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-500/10"
+            >
+              <HugeiconsIcon icon={Delete01Icon} size={12} /> Delete
+            </button>
+            <button onClick={() => setSelected(new Set())} className="rounded-lg p-1 hover:bg-[var(--theme-hover)]">
+              <HugeiconsIcon icon={MultiplicationSignIcon} size={12} className="text-[var(--theme-muted)]" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── List view ── */}
       {viewMode === 'list' && (
         <div className="mt-4 space-y-2">
@@ -277,13 +336,31 @@ export function ContactsScreen() {
               <p className="mt-1 text-xs">Add one to get started.</p>
             </div>
           ) : (
+            <>
+            {/* Select-all when any selected */}
+            {selected.size > 0 && (
+              <button onClick={toggleAll} className="mb-1 flex items-center gap-1.5 text-[11px] text-[var(--theme-accent)] hover:underline">
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} size={12} />
+                {selected.size === filtered.length ? 'Deselect all' : `Select all ${filtered.length}`}
+              </button>
+            )}
             <AnimatePresence mode="popLayout">
               {filtered.map((c) => (
-                <motion.div key={c.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+                <motion.div key={c.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                  className="flex items-center gap-2">
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => toggleSelect(c.id)}
+                    className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors',
+                      selected.has(c.id) ? 'border-transparent text-white' : 'border-[var(--theme-border)] hover:border-[var(--theme-accent)]')}
+                    style={selected.has(c.id) ? { background: 'var(--theme-accent)' } : undefined}
+                  >
+                    {selected.has(c.id) && <HugeiconsIcon icon={CheckmarkCircle01Icon} size={12} />}
+                  </button>
                   <Link
                     to="/contacts/$id"
                     params={{ id: c.id }}
-                    className="flex items-start justify-between gap-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-4 transition-colors hover:bg-[var(--theme-hover)]"
+                    className="flex flex-1 items-start justify-between gap-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-4 transition-colors hover:bg-[var(--theme-hover)]"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-center gap-2">
@@ -308,9 +385,10 @@ export function ContactsScreen() {
                       <HugeiconsIcon icon={Delete01Icon} size={14} style={{ color: 'var(--theme-danger)' }} />
                     </button>
                   </Link>
-                </motion.div>
+                  </motion.div>
               ))}
             </AnimatePresence>
+            </>
           )}
         </div>
       )}
