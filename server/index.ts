@@ -1,5 +1,8 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { readFileSync, existsSync } from 'fs'
+import { join, resolve } from 'path'
 import { registerContacts } from './routes/contacts'
 import { registerConversations } from './routes/conversations'
 import { registerAppointments } from './routes/appointments'
@@ -54,6 +57,26 @@ registerAutomations(app)
 registerCalendar(app)
 registerStrategy(app)
 
+// ── Static file serving (production) ────────────────────────────────────────
+// In dev, Vite serves the frontend on :4321. In production (SERVE_STATIC=true
+// or NODE_ENV=production), the Hono server also serves dist/ and falls back
+// to index.html for SPA routing.
+const isProd = process.env.SERVE_STATIC === 'true' || process.env.NODE_ENV === 'production'
+const distDir = resolve(process.env.DIST_DIR ?? join(process.cwd(), 'dist'))
+
+if (isProd && existsSync(distDir)) {
+  // Serve hashed assets with long cache
+  app.use('/assets/*', serveStatic({ root: distDir }))
+  // Serve other static files (favicon, etc.)
+  app.use('/*', serveStatic({ root: distDir }))
+  // SPA fallback — any unmatched route serves index.html
+  app.get('*', (c) => {
+    const html = readFileSync(join(distDir, 'index.html'), 'utf8')
+    return c.html(html)
+  })
+  console.log(`[ai-os] Serving static files from ${distDir}`)
+}
+
 const port = Number(process.env.API_PORT ?? 8787)
 serve({ fetch: app.fetch, port })
-console.log(`[ai-os] API listening on http://localhost:${port}`)
+console.log(`[ai-os] Listening on http://localhost:${port} (brand: ${process.env.BRAND ?? 'default'})`)

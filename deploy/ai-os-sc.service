@@ -1,5 +1,5 @@
 [Unit]
-Description=AI OS — SC (Simple Connect)
+Description=AI OS — SC (Simple Connect) on :8787
 After=network.target
 
 [Service]
@@ -7,7 +7,9 @@ Type=simple
 User=root
 WorkingDirectory=/opt/ai-os
 EnvironmentFile=/opt/ai-os/.env.sc
-ExecStart=/usr/bin/node node_modules/.bin/tsx server/index.ts
+Environment=NODE_ENV=production
+Environment=SERVE_STATIC=true
+ExecStart=/usr/bin/node /opt/ai-os/node_modules/.bin/tsx server/index.ts
 Restart=always
 RestartSec=5
 StandardOutput=journal
