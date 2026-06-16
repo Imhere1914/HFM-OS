@@ -1,151 +1,536 @@
 /**
- * Site Studio — a Lovable-style interface for editing the marketing websites in
- * natural language. LEFT: a chat-like prompt panel + a running list of edit
- * requests (each backed by a Dev Studio agent task, expandable to the live log).
- * RIGHT: a live preview iframe of the deployed site. Action bar builds, deploys,
- * and reverts. Reuses the Dev Studio agent runner via /api/dev/tasks polling.
+ * Site Studio — Lovable-style creative hub.
+ * LEFT: collapsible archive sidebar (Websites + Landing Pages + Media assets)
+ * CENTER: Build / Preview / Code / Media tabs with AI-prompt canvas
+ * AI prompting → dev tasks → live preview, exactly like before but richer layout.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  Add01Icon,
+  ArrowLeft01Icon,
+  Cancel01Icon,
+  CodeIcon,
+  Copy01Icon,
+  Delete01Icon,
+  Download01Icon,
+  EyeIcon,
   Globe02Icon,
-  RefreshIcon,
+  ImageAdd01Icon,
+  Layout01Icon,
+  Loading03Icon,
   Rocket01Icon,
   SentIcon,
   SparklesIcon,
   ArrowTurnBackwardIcon,
+  Video01Icon,
+  RefreshIcon,
   SourceCodeIcon,
 } from '@hugeicons/core-free-icons'
 import { useBrand } from '@/contexts/BrandContext'
 import { toast } from '@/components/toast'
 import { cn } from '@/lib/utils'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type SiteKey = 'sc' | 'hfm'
+type CenterTab = 'build' | 'preview' | 'code' | 'media'
+type MediaTab = 'image' | 'video'
 type DevTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+type ArchiveItemType = 'website' | 'page'
 
-interface SiteCommit {
-  hash: string
-  subject: string
-}
-
-interface SiteStatus {
-  key: SiteKey
-  name: string
-  url: string
-  lastCommits: SiteCommit[]
-}
-
-interface SiteStudioStatus {
-  server: boolean
-  sites: SiteStatus[]
-}
-
-interface DevTask {
+interface ArchiveItem {
   id: string
-  prompt: string
-  status: DevTaskStatus
-  created_at: string
+  name: string
+  type: ArchiveItemType
+  status: 'live' | 'draft'
+  lastEdited: string
+  url?: string
+  thumbnail?: string
 }
 
-// the human prompt the user typed (we strip the agent preamble for display)
-interface EditRequest {
-  taskId: string
-  prompt: string
-  site: SiteKey
-}
+interface SiteCommit { hash: string; subject: string }
+interface SiteStatus { key: SiteKey; name: string; url: string; lastCommits: SiteCommit[] }
+interface SiteStudioStatus { server: boolean; sites: SiteStatus[] }
+interface DevTask { id: string; prompt: string; status: DevTaskStatus; created_at: string }
+interface EditRequest { taskId: string; prompt: string; site: SiteKey }
+interface GeneratedImage { url: string; prompt: string; id: string }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────────
-
-const STATUS_LABEL: Record<DevTaskStatus, string> = {
-  queued: 'queued',
-  running: 'running',
-  completed: 'done',
-  failed: 'failed',
-  cancelled: 'cancelled',
-}
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<DevTaskStatus, string> = {
-  queued: '#94a3b8',
-  running: '#f59e0b',
-  completed: '#10b981',
-  failed: '#ef4444',
-  cancelled: '#94a3b8',
+  queued: '#94a3b8', running: '#f59e0b',
+  completed: '#10b981', failed: '#ef4444', cancelled: '#94a3b8',
+}
+const STATUS_DOT: Record<DevTaskStatus, string> = {
+  queued: '○', running: '◉', completed: '●', failed: '✕', cancelled: '–',
 }
 
 const EXAMPLE_PROMPTS = [
-  'Change the hero headline to…',
+  'Update the hero headline',
   'Add a testimonials section',
-  'Make the CTA buttons larger and green',
-  'Add a new pricing tier',
+  'Make CTAs more prominent',
+  'Add an FAQ section',
+  'Change the color palette',
 ]
 
-// ── localStorage for the per-site edit-request list ─────────────────────────────
+const IMG_STYLE_OPTIONS = [
+  'Photorealistic', 'Digital Art', 'Watercolor', 'Cinematic', 'Minimalist', 'Abstract',
+]
+
+// ── LocalStorage helpers ────────────────────────────────────────────────────────
 
 function loadEdits(site: SiteKey): EditRequest[] {
   try {
     const raw = localStorage.getItem(`site-studio-edits-${site}`)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as EditRequest[]
+    const parsed = raw ? (JSON.parse(raw) as EditRequest[]) : []
     return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
+  } catch { return [] }
 }
-
 function saveEdits(site: SiteKey, edits: EditRequest[]): void {
-  try {
-    localStorage.setItem(`site-studio-edits-${site}`, JSON.stringify(edits.slice(0, 30)))
-  } catch {
-    // storage full / unavailable — non-fatal
-  }
+  try { localStorage.setItem(`site-studio-edits-${site}`, JSON.stringify(edits.slice(0, 30))) } catch { /* ignore */ }
 }
 
-// ── Screen ──────────────────────────────────────────────────────────────────────
+function loadArchive(): ArchiveItem[] {
+  try {
+    const raw = localStorage.getItem('site-studio-archive')
+    const parsed = raw ? (JSON.parse(raw) as ArchiveItem[]) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+function saveArchive(items: ArchiveItem[]): void {
+  try { localStorage.setItem('site-studio-archive', JSON.stringify(items)) } catch { /* ignore */ }
+}
+
+function loadImages(): GeneratedImage[] {
+  try {
+    const raw = localStorage.getItem('site-studio-images')
+    const parsed = raw ? (JSON.parse(raw) as GeneratedImage[]) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+function saveImages(imgs: GeneratedImage[]): void {
+  try { localStorage.setItem('site-studio-images', JSON.stringify(imgs.slice(0, 50))) } catch { /* ignore */ }
+}
+
+// ── Archive Sidebar ─────────────────────────────────────────────────────────────
+
+function ArchiveSidebar({
+  archive, onSelect, onNew, onDelete, selectedId, accent,
+}: {
+  archive: ArchiveItem[]
+  onSelect: (item: ArchiveItem) => void
+  onNew: (type: ArchiveItemType) => void
+  onDelete: (id: string) => void
+  selectedId: string | null
+  accent: string
+}) {
+  const [websitesOpen, setWebsitesOpen] = useState(true)
+  const [pagesOpen, setPagesOpen] = useState(true)
+
+  const websites = archive.filter(a => a.type === 'website')
+  const pages = archive.filter(a => a.type === 'page')
+
+  const renderItem = (item: ArchiveItem) => (
+    <div
+      key={item.id}
+      onClick={() => onSelect(item)}
+      className="group flex items-start gap-2.5 rounded-xl px-3 py-2.5 cursor-pointer transition-all"
+      style={{
+        background: selectedId === item.id ? `color-mix(in srgb, ${accent} 10%, transparent)` : 'transparent',
+        border: selectedId === item.id ? `1px solid color-mix(in srgb, ${accent} 25%, transparent)` : '1px solid transparent',
+      }}
+    >
+      <div
+        className="mt-0.5 h-8 w-10 shrink-0 rounded-lg overflow-hidden"
+        style={{ background: 'var(--theme-hover)' }}
+      >
+        {item.thumbnail ? (
+          <img src={item.thumbnail} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center">
+            <HugeiconsIcon
+              icon={item.type === 'website' ? Globe02Icon : Layout01Icon}
+              size={14} style={{ color: accent, opacity: 0.5 }}
+            />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] font-medium text-[var(--theme-text)]">{item.name}</p>
+        <div className="mt-0.5 flex items-center gap-1.5">
+          <span
+            className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+            style={{
+              background: item.status === 'live' ? 'rgba(16,185,129,0.12)' : 'rgba(148,163,184,0.12)',
+              color: item.status === 'live' ? '#10b981' : '#94a3b8',
+            }}
+          >
+            {item.status}
+          </span>
+          <span className="text-[9px] text-[var(--theme-muted)]">{item.lastEdited}</span>
+        </div>
+      </div>
+      <button
+        onClick={e => { e.stopPropagation(); onDelete(item.id) }}
+        className="mt-0.5 shrink-0 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/10"
+      >
+        <HugeiconsIcon icon={Delete01Icon} size={11} style={{ color: '#ef4444' }} />
+      </button>
+    </div>
+  )
+
+  const SectionHeader = ({
+    label, open, onToggle, onAdd, count,
+  }: { label: string; open: boolean; onToggle: () => void; onAdd: () => void; count: number }) => (
+    <div className="flex items-center gap-1 px-2 py-1.5">
+      <button
+        onClick={onToggle}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--theme-muted)] hover:text-[var(--theme-text)] transition-colors"
+      >
+        <span style={{ transform: open ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' }}>›</span>
+        {label}
+        <span className="rounded-full px-1.5 py-0.5 text-[9px]" style={{ background: 'var(--theme-hover)' }}>{count}</span>
+      </button>
+      <button
+        onClick={onAdd}
+        className="rounded-lg p-1 hover:bg-[var(--theme-hover)] transition-colors"
+        title={`New ${label.toLowerCase().slice(0, -1)}`}
+      >
+        <HugeiconsIcon icon={Add01Icon} size={12} style={{ color: accent }} />
+      </button>
+    </div>
+  )
+
+  return (
+    <div
+      className="flex h-full flex-col border-r overflow-hidden"
+      style={{ background: 'var(--theme-card)', borderColor: 'var(--theme-border)', width: '240px', minWidth: '240px' }}
+    >
+      <div className="border-b px-3 py-3" style={{ borderColor: 'var(--theme-border)' }}>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">Archive</p>
+      </div>
+      <div className="flex-1 overflow-y-auto py-2">
+        <SectionHeader
+          label="Websites" open={websitesOpen} onToggle={() => setWebsitesOpen(v => !v)}
+          onAdd={() => onNew('website')} count={websites.length}
+        />
+        {websitesOpen && (
+          <div className="mb-2 px-1">
+            {websites.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-[var(--theme-muted)]">No websites yet</p>
+            ) : websites.map(renderItem)}
+          </div>
+        )}
+
+        <div className="my-1 mx-3 h-px" style={{ background: 'var(--theme-border)' }} />
+
+        <SectionHeader
+          label="Landing Pages" open={pagesOpen} onToggle={() => setPagesOpen(v => !v)}
+          onAdd={() => onNew('page')} count={pages.length}
+        />
+        {pagesOpen && (
+          <div className="px-1">
+            {pages.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-[var(--theme-muted)]">No landing pages yet</p>
+            ) : pages.map(renderItem)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Request Item ──────────────────────────────────────────────────────────
+
+function EditItem({ req }: { req: EditRequest & { status?: DevTaskStatus } }) {
+  const status = req.status ?? 'queued'
+  return (
+    <div
+      className="rounded-xl border p-3 cursor-pointer transition-all"
+      style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-bg)' }}
+      onClick={() => {/* expand edit detail in future */}}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-mono" style={{ color: STATUS_COLOR[status] }}>
+          {STATUS_DOT[status]}
+        </span>
+        <p className="min-w-0 flex-1 truncate text-[12px] text-[var(--theme-text)]">{req.prompt}</p>
+        <span className="shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase" style={{
+          background: `color-mix(in srgb, ${STATUS_COLOR[status]} 12%, transparent)`,
+          color: STATUS_COLOR[status],
+        }}>
+          {status}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Image Generator ────────────────────────────────────────────────────────────
+
+function ImageGenerator({ accent }: { accent: string }) {
+  const [prompt, setPrompt] = useState('')
+  const [style, setStyle] = useState('Photorealistic')
+  const [loading, setLoading] = useState(false)
+  const [images, setImages] = useState<GeneratedImage[]>(() => loadImages())
+
+  const generate = async () => {
+    if (!prompt.trim() || loading) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/media/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${style}: ${prompt}`, size: '1024x1024' }),
+      })
+      if (!res.ok) throw new Error('Generation failed')
+      const data = await res.json() as { url?: string; image_url?: string }
+      const url = data.url ?? data.image_url ?? ''
+      if (url) {
+        const next = [{ id: Date.now().toString(), url, prompt: `${style}: ${prompt}` }, ...images]
+        setImages(next)
+        saveImages(next)
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Image generation failed', { type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const gradient = `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 65%, #000))`
+  const glow = `0 2px 8px color-mix(in srgb, ${accent} 38%, transparent)`
+
+  return (
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      {/* Prompt area */}
+      <div className="rounded-2xl border p-5" style={{ background: 'var(--theme-card)', borderColor: 'var(--theme-border)' }}>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">Generate Image</p>
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void generate() }}
+          placeholder="Describe the image you want to create…"
+          rows={3}
+          className="w-full resize-none rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+          style={{ background: 'var(--theme-input)', borderColor: 'var(--theme-border)', color: 'var(--theme-text)' }}
+        />
+        {/* Style chips */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {IMG_STYLE_OPTIONS.map(s => (
+            <button
+              key={s}
+              onClick={() => setStyle(s)}
+              className="rounded-full px-3 py-1 text-[11px] font-medium transition-all"
+              style={{
+                background: style === s ? `color-mix(in srgb, ${accent} 15%, transparent)` : 'var(--theme-hover)',
+                color: style === s ? accent : 'var(--theme-muted)',
+                border: style === s ? `1px solid color-mix(in srgb, ${accent} 30%, transparent)` : '1px solid transparent',
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => void generate()}
+          disabled={!prompt.trim() || loading}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-white disabled:opacity-40"
+          style={{ background: gradient, boxShadow: glow }}
+        >
+          {loading ? <HugeiconsIcon icon={Loading03Icon} size={14} className="animate-spin" /> : <HugeiconsIcon icon={SparklesIcon} size={14} />}
+          {loading ? 'Generating…' : 'Generate'}
+        </button>
+      </div>
+
+      {/* Image grid */}
+      {images.length > 0 && (
+        <div>
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">Generated Images</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {images.map(img => (
+              <div key={img.id} className="group relative overflow-hidden rounded-xl" style={{ aspectRatio: '1' }}>
+                <img src={img.url} alt={img.prompt} className="h-full w-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a
+                    href={img.url} download target="_blank" rel="noopener noreferrer"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <HugeiconsIcon icon={Download01Icon} size={14} className="text-white" />
+                  </a>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard.writeText(img.url)
+                      toast('URL copied')
+                    }}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                  >
+                    <HugeiconsIcon icon={Copy01Icon} size={14} className="text-white" />
+                  </button>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <p className="truncate text-[9px] text-white/70">{img.prompt}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Video Generator ────────────────────────────────────────────────────────────
+
+function VideoGenerator({ accent }: { accent: string }) {
+  const [script, setScript] = useState('')
+  const [videoStyle, setVideoStyle] = useState('Cinematic')
+  const [loading, setLoading] = useState(false)
+  const [videoUrl, setVideoUrl] = useState('')
+
+  const VIDEO_STYLES = ['Cinematic', 'Product Demo', 'Explainer', 'Social Story', 'Documentary']
+  const gradient = `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 65%, #000))`
+
+  const generate = async () => {
+    if (!script.trim() || loading) return
+    setLoading(true)
+    try {
+      const res = await fetch('/api/media/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: script, style: videoStyle }),
+      })
+      if (!res.ok) throw new Error('Video generation failed')
+      const data = await res.json() as { url?: string; video_url?: string }
+      setVideoUrl(data.url ?? data.video_url ?? '')
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Video generation failed', { type: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      <div className="rounded-2xl border p-5" style={{ background: 'var(--theme-card)', borderColor: 'var(--theme-border)' }}>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">Generate Video</p>
+        <textarea
+          value={script}
+          onChange={e => setScript(e.target.value)}
+          placeholder="Describe your video or paste a script…"
+          rows={5}
+          className="w-full resize-none rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+          style={{ background: 'var(--theme-input)', borderColor: 'var(--theme-border)', color: 'var(--theme-text)' }}
+        />
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {VIDEO_STYLES.map(s => (
+            <button
+              key={s}
+              onClick={() => setVideoStyle(s)}
+              className="rounded-full px-3 py-1 text-[11px] font-medium transition-all"
+              style={{
+                background: videoStyle === s ? `color-mix(in srgb, ${accent} 15%, transparent)` : 'var(--theme-hover)',
+                color: videoStyle === s ? accent : 'var(--theme-muted)',
+                border: videoStyle === s ? `1px solid color-mix(in srgb, ${accent} 30%, transparent)` : '1px solid transparent',
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => void generate()}
+          disabled={!script.trim() || loading}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-white disabled:opacity-40"
+          style={{ background: gradient }}
+        >
+          {loading ? <HugeiconsIcon icon={Loading03Icon} size={14} className="animate-spin" /> : <HugeiconsIcon icon={Video01Icon} size={14} />}
+          {loading ? 'Generating…' : 'Generate Video'}
+        </button>
+      </div>
+
+      {videoUrl && (
+        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--theme-border)' }}>
+          <video src={videoUrl} controls className="w-full" />
+          <div className="flex gap-2 border-t p-3" style={{ borderColor: 'var(--theme-border)' }}>
+            <a
+              href={videoUrl} download target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors hover:bg-[var(--theme-hover)]"
+              style={{ color: accent }}
+            >
+              <HugeiconsIcon icon={Download01Icon} size={13} />
+              Download
+            </a>
+          </div>
+        </div>
+      )}
+
+      {!videoUrl && !loading && (
+        <div className="flex flex-col items-center justify-center rounded-2xl border py-16 text-center" style={{ borderColor: 'var(--theme-border)', borderStyle: 'dashed' }}>
+          <HugeiconsIcon icon={Video01Icon} size={40} className="mb-3" style={{ color: accent, opacity: 0.3 }} />
+          <p className="text-[13px] font-medium" style={{ color: 'var(--theme-muted)' }}>Your generated video will appear here</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main Screen ─────────────────────────────────────────────────────────────────
 
 export function SiteStudioScreen() {
   const brand = useBrand()
   const accent = brand.accentColor
   const queryClient = useQueryClient()
 
+  // Layout state
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024)
+  const [centerTab, setCenterTab] = useState<CenterTab>('build')
+  const [mediaTab, setMediaTab] = useState<MediaTab>('image')
+
+  // Site state
   const [site, setSite] = useState<SiteKey>('sc')
   const [prompt, setPrompt] = useState('')
   const [edits, setEdits] = useState<EditRequest[]>(() => loadEdits('sc'))
   const [iframeKey, setIframeKey] = useState(0)
   const [buildOutput, setBuildOutput] = useState<{ ok: boolean; log: string } | null>(null)
 
-  const brandQ = `?brand=site-${site}`
+  // Archive state
+  const [archive, setArchive] = useState<ArchiveItem[]>(() => loadArchive())
+  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null)
 
-  // reload the per-site edit list when switching sites
   useEffect(() => {
     setEdits(loadEdits(site))
     setBuildOutput(null)
+  }, [site])
+
+  const persistEdits = useCallback((next: EditRequest[]) => {
+    setEdits(next)
+    saveEdits(site, next)
   }, [site])
 
   const statusQuery = useQuery<SiteStudioStatus>({
     queryKey: ['site-studio', 'status'],
     queryFn: async () => {
       const res = await fetch('/api/site-studio/status')
-      if (!res.ok) throw new Error('Failed to load Site Studio status')
+      if (!res.ok) throw new Error('Failed')
       return res.json()
     },
     refetchInterval: 30_000,
   })
-  const status = statusQuery.data
-  const sites = status?.sites ?? []
-  const current = sites.find((s) => s.key === site)
-  const siteName = current?.name ?? (site === 'sc' ? 'Simple Connect' : 'Holistic Functional Care')
-  const siteUrl = current?.url ?? ''
 
-  const persistEdits = useCallback(
-    (next: EditRequest[]) => {
-      setEdits(next)
-      saveEdits(site, next)
+  const editTasksQuery = useQuery<{ tasks: DevTask[] }>({
+    queryKey: ['site-studio', 'tasks', site],
+    queryFn: async () => {
+      const res = await fetch(`/api/dev/tasks?brand=site-${site}`)
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
     },
-    [site]
-  )
+    refetchInterval: edits.some(() => true) ? 5_000 : false,
+    enabled: edits.length > 0,
+  })
 
   const editMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -154,33 +539,28 @@ export function SiteStudioScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: text }),
       })
-      const d = (await res.json()) as { taskId?: string; error?: string }
-      if (!res.ok || !d.taskId) throw new Error(d.error ?? 'Failed to start edit')
+      const d = await res.json() as { taskId?: string; error?: string }
+      if (!res.ok || !d.taskId) throw new Error(d.error ?? 'Failed')
       return { taskId: d.taskId, prompt: text }
     },
     onSuccess: ({ taskId, prompt: text }) => {
       persistEdits([{ taskId, prompt: text, site }, ...edits])
       setPrompt('')
-      toast('Edit started — Claude is working on your site')
+      toast('Edit queued — Claude is building')
     },
-    onError: (e) => toast(e instanceof Error ? e.message : 'Failed to start edit', { type: 'error' }),
+    onError: e => toast(e instanceof Error ? e.message : 'Failed', { type: 'error' }),
   })
 
   const buildMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/site-studio/${site}/build`, { method: 'POST' })
-      return (await res.json()) as { ok: boolean; log: string }
+      return res.json() as Promise<{ ok: boolean; log: string }>
     },
-    onSuccess: (d) => {
+    onSuccess: d => {
       setBuildOutput(d)
-      if (d.ok) {
-        toast('Build succeeded — reloading preview')
-        setIframeKey((k) => k + 1)
-      } else {
-        toast('Build failed — see output', { type: 'error' })
-      }
+      if (d.ok) { toast('Build succeeded — reloading preview'); setIframeKey(k => k + 1) }
+      else toast('Build failed', { type: 'error' })
     },
-    onError: (e) => toast(e instanceof Error ? e.message : 'Build failed', { type: 'error' }),
   })
 
   const deployMutation = useMutation({
@@ -190,260 +570,372 @@ export function SiteStudioScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ summary: edits[0]?.prompt }),
       })
-      return (await res.json()) as { ok: boolean; log: string; commitHash?: string }
+      return res.json() as Promise<{ ok: boolean; log: string; commitHash?: string }>
     },
-    onSuccess: (d) => {
+    onSuccess: d => {
       setBuildOutput(d)
       if (d.ok) {
-        toast(`Published to live${d.commitHash ? ` (${d.commitHash})` : ''}`)
-        setIframeKey((k) => k + 1)
+        toast(`Published${d.commitHash ? ` (${d.commitHash})` : ''}`)
+        setIframeKey(k => k + 1)
         void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] })
-      } else {
-        toast('Deploy failed — see output', { type: 'error' })
-      }
+      } else toast('Deploy failed', { type: 'error' })
     },
-    onError: (e) => toast(e instanceof Error ? e.message : 'Deploy failed', { type: 'error' }),
   })
 
   const revertMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/site-studio/${site}/revert`, { method: 'POST' })
-      return (await res.json()) as { ok: boolean; log: string }
+      return res.json() as Promise<{ ok: boolean; log: string }>
     },
-    onSuccess: (d) => {
-      setBuildOutput(d)
-      if (d.ok) {
-        toast('Reverted last change and redeployed')
-        setIframeKey((k) => k + 1)
-        void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] })
-      } else {
-        toast('Revert failed — see output', { type: 'error' })
-      }
+    onSuccess: d => {
+      if (d.ok) { toast('Reverted'); setIframeKey(k => k + 1); void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] }) }
+      else toast('Revert failed', { type: 'error' })
     },
-    onError: (e) => toast(e instanceof Error ? e.message : 'Revert failed', { type: 'error' }),
   })
 
-  const onSend = () => {
-    const text = prompt.trim()
-    if (!text || editMutation.isPending) return
-    editMutation.mutate(text)
-  }
-
-  const onDeploy = () => {
-    if (window.confirm(`Publish changes to ${siteUrl}?`)) deployMutation.mutate()
-  }
-
-  const onRevert = () => {
-    if (window.confirm('Revert the last Site Studio change and redeploy? This cannot be undone.'))
-      revertMutation.mutate()
-  }
+  const status = statusQuery.data
+  const sites = status?.sites ?? []
+  const current = sites.find(s => s.key === site)
+  const siteUrl = current?.url ?? ''
+  const busy = buildMutation.isPending || deployMutation.isPending || revertMutation.isPending
 
   const gradient = `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 65%, #000))`
   const glow = `0 2px 8px color-mix(in srgb, ${accent} 38%, transparent)`
-  const busy = buildMutation.isPending || deployMutation.isPending || revertMutation.isPending
+
+  const tasks = editTasksQuery.data?.tasks ?? []
+  const enrichedEdits = edits.map(e => ({
+    ...e,
+    status: tasks.find(t => t.id === e.taskId)?.status,
+  }))
+
+  const handleNewArchiveItem = (type: ArchiveItemType) => {
+    const name = window.prompt(`Name for new ${type === 'website' ? 'website' : 'landing page'}:`)
+    if (!name?.trim()) return
+    const item: ArchiveItem = {
+      id: Date.now().toString(),
+      name: name.trim(),
+      type,
+      status: 'draft',
+      lastEdited: new Date().toLocaleDateString(),
+    }
+    const next = [item, ...archive]
+    setArchive(next)
+    saveArchive(next)
+    setSelectedArchiveId(item.id)
+  }
+
+  const handleDeleteArchiveItem = (id: string) => {
+    const next = archive.filter(a => a.id !== id)
+    setArchive(next)
+    saveArchive(next)
+    if (selectedArchiveId === id) setSelectedArchiveId(null)
+  }
+
+  const CENTER_TABS: { key: CenterTab; label: string; icon: typeof EyeIcon }[] = [
+    { key: 'build', label: 'Build', icon: SparklesIcon },
+    { key: 'preview', label: 'Preview', icon: EyeIcon },
+    { key: 'code', label: 'Code', icon: CodeIcon },
+    { key: 'media', label: 'Media', icon: ImageAdd01Icon },
+  ]
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {/* ── Header + site switcher ── */}
-      <div className="flex items-center gap-3 border-b border-[var(--theme-border)] px-4 py-3">
+    <div className="flex h-full flex-col overflow-hidden">
+      <StudioStyles />
+
+      {/* ── Top bar ── */}
+      <div className="flex items-center gap-3 border-b px-4 py-2.5" style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-card)' }}>
+        {/* Brand icon */}
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white"
           style={{ background: gradient, boxShadow: glow }}
         >
-          <HugeiconsIcon icon={Globe02Icon} size={18} />
+          <HugeiconsIcon icon={Globe02Icon} size={16} />
         </div>
         <div className="min-w-0">
-          <h1 className="text-[16px] font-bold leading-tight text-[var(--theme-text)]">Site Studio</h1>
-          <p className="truncate text-[11px] text-[var(--theme-muted)]">
-            Describe a change and Claude edits your live website
-          </p>
+          <h1 className="text-[14px] font-bold text-[var(--theme-text)]">Site Studio</h1>
+          <p className="text-[10px] text-[var(--theme-muted)]">Build, preview, and publish with AI</p>
         </div>
 
-        <div className="ml-auto flex rounded-lg border border-[var(--theme-border)] p-0.5">
-          {(['sc', 'hfm'] as const).map((k) => {
-            const s = sites.find((x) => x.key === k)
-            const label = s?.name ?? (k === 'sc' ? 'Simple Connect' : 'Holistic Functional Care')
-            return (
-              <button
-                key={k}
-                onClick={() => setSite(k)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors',
-                  site === k
-                    ? 'text-[var(--theme-text)]'
-                    : 'text-[var(--theme-muted)] hover:bg-[var(--theme-hover)]'
-                )}
-                style={site === k ? { background: 'var(--theme-accent-soft)' } : undefined}
-              >
-                {label}
-              </button>
-            )
-          })}
+        {/* Sidebar toggle */}
+        <button
+          onClick={() => setSidebarOpen(v => !v)}
+          className="ml-2 rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-hover)]"
+          title="Toggle archive"
+        >
+          <HugeiconsIcon icon={ArrowLeft01Icon} size={14} className="text-[var(--theme-muted)]"
+            style={{ transform: sidebarOpen ? 'none' : 'rotate(180deg)', transition: 'transform 0.2s' }} />
+        </button>
+
+        {/* Center tabs */}
+        <div
+          className="ml-2 flex rounded-xl border p-0.5"
+          style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-bg)' }}
+        >
+          {CENTER_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setCenterTab(tab.key)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all',
+                centerTab === tab.key ? 'text-[var(--theme-text)]' : 'text-[var(--theme-muted)] hover:text-[var(--theme-text)]'
+              )}
+              style={centerTab === tab.key ? { background: `color-mix(in srgb, ${accent} 12%, var(--theme-card))`, color: accent } : undefined}
+            >
+              <HugeiconsIcon icon={tab.icon} size={12} />
+              {tab.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {status && !status.server && (
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-          Site Studio runs against the staged site repos on the server — these are not present in this
-          environment, so edits and deploys are disabled here.
-        </div>
-      )}
-
-      {/* ── Split: prompt panel | preview ── */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* LEFT: chat-like prompt + edit list */}
-        <div className="flex w-[380px] shrink-0 flex-col border-r border-[var(--theme-border)] bg-[var(--theme-card)]">
-          <div className="border-b border-[var(--theme-border)] p-3">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onSend()
-              }}
-              placeholder="Describe a change to your website…"
-              rows={4}
-              className="w-full resize-none rounded-xl border border-[var(--theme-border)] bg-[var(--theme-input)] px-3 py-2.5 text-[13px] text-[var(--theme-text)] outline-none placeholder:text-[var(--theme-muted)] focus:border-[var(--theme-accent)]"
-            />
-
-            {/* example prompt chips */}
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {EXAMPLE_PROMPTS.map((ex) => (
+        <div className="ml-auto flex items-center gap-2">
+          {/* Site switcher */}
+          <div className="flex rounded-lg border p-0.5" style={{ borderColor: 'var(--theme-border)' }}>
+            {(['sc', 'hfm'] as const).map(k => {
+              const s = sites.find(x => x.key === k)
+              const label = s?.name ?? (k === 'sc' ? 'SC' : 'HFM')
+              return (
                 <button
-                  key={ex}
-                  onClick={() => setPrompt(ex)}
-                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium text-[var(--theme-muted)] transition-colors hover:text-[var(--theme-text)]"
-                  style={{
-                    borderColor: `color-mix(in srgb, ${accent} 30%, var(--theme-border))`,
-                    background: `color-mix(in srgb, ${accent} 6%, transparent)`,
-                  }}
+                  key={k}
+                  onClick={() => setSite(k)}
+                  className={cn('rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
+                    site === k ? 'text-[var(--theme-text)]' : 'text-[var(--theme-muted)] hover:bg-[var(--theme-hover)]'
+                  )}
+                  style={site === k ? { background: 'var(--theme-accent-soft)' } : undefined}
                 >
-                  <HugeiconsIcon icon={SparklesIcon} size={10} />
-                  {ex}
+                  {label}
                 </button>
-              ))}
-            </div>
-
-            <button
-              onClick={onSend}
-              disabled={!prompt.trim() || editMutation.isPending}
-              className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-              style={{ background: gradient, boxShadow: glow }}
-            >
-              <HugeiconsIcon icon={SentIcon} size={14} />
-              {editMutation.isPending ? 'Starting…' : 'Send'}
-            </button>
+              )
+            })}
           </div>
 
-          {/* edit request list */}
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--theme-muted)] opacity-70">
-              Edit requests
-            </div>
-            {edits.length === 0 ? (
-              <p className="text-[11px] text-[var(--theme-muted)]">
-                No edits yet. Describe a change above to get started.
-              </p>
-            ) : (
-              edits.map((e) => <EditRow key={e.taskId} edit={e} brandQ={brandQ} />)
-            )}
-          </div>
-        </div>
-
-        {/* RIGHT: preview + action bar */}
-        <div className="flex min-w-0 flex-1 flex-col bg-[var(--theme-bg)]">
-          <div className="flex items-center gap-2 border-b border-[var(--theme-border)] px-4 py-2.5">
-            <span className="truncate font-mono text-[11px] text-[var(--theme-muted)]">{siteUrl}</span>
-            <button
-              onClick={() => setIframeKey((k) => k + 1)}
-              title="Reload preview"
-              className="ml-auto flex items-center gap-1 rounded-lg border border-[var(--theme-border)] px-2 py-1 text-[11px] font-medium text-[var(--theme-muted)] transition-colors hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)]"
-            >
-              <HugeiconsIcon icon={RefreshIcon} size={12} />
-              Reload
-            </button>
-          </div>
-
-          <div className="border-b border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-1.5 text-[10px] text-[var(--theme-muted)]">
-            The preview shows the LAST DEPLOYED version of {siteName}. Build to compile pending edits;
-            deploy to publish them.
-          </div>
-
-          {/* preview iframe */}
-          <div className="relative min-h-0 flex-1">
-            {siteUrl ? (
-              <iframe
-                key={iframeKey}
-                src={siteUrl}
-                title={`${siteName} preview`}
-                className="h-full w-full border-0 bg-white"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-[12px] text-[var(--theme-muted)]">
-                Preview unavailable
-              </div>
-            )}
-          </div>
-
-          {/* build output drawer */}
-          {buildOutput && (
-            <div className="max-h-40 shrink-0 overflow-y-auto border-t border-[var(--theme-border)] bg-[#0d1117] p-3">
-              <div
-                className="mb-1 text-[10px] font-semibold uppercase tracking-widest"
-                style={{ color: buildOutput.ok ? '#10b981' : '#ef4444' }}
+          {/* Actions */}
+          {centerTab !== 'media' && (
+            <>
+              <button
+                onClick={() => buildMutation.mutate()}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition-all disabled:opacity-40"
+                style={{ background: 'var(--theme-hover)', color: 'var(--theme-text)' }}
               >
-                {buildOutput.ok ? 'Success' : 'Failed'}
+                {buildMutation.isPending ? <HugeiconsIcon icon={Loading03Icon} size={12} className="animate-spin" /> : <HugeiconsIcon icon={RefreshIcon} size={12} />}
+                Build
+              </button>
+              <button
+                onClick={() => { if (window.confirm(`Publish to ${siteUrl}?`)) deployMutation.mutate() }}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold text-white transition-all disabled:opacity-40"
+                style={{ background: gradient, boxShadow: glow }}
+              >
+                <HugeiconsIcon icon={Rocket01Icon} size={12} />
+                {deployMutation.isPending ? 'Publishing…' : 'Publish'}
+              </button>
+              <button
+                onClick={() => { if (window.confirm('Revert last change?')) revertMutation.mutate() }}
+                disabled={busy}
+                className="rounded-xl p-1.5 transition-colors hover:bg-red-500/10 disabled:opacity-40"
+                title="Revert"
+              >
+                <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={14} style={{ color: '#ef4444' }} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Body ── */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Archive sidebar */}
+        {sidebarOpen && (
+          <ArchiveSidebar
+            archive={archive}
+            onSelect={item => setSelectedArchiveId(item.id)}
+            onNew={handleNewArchiveItem}
+            onDelete={handleDeleteArchiveItem}
+            selectedId={selectedArchiveId}
+            accent={accent}
+          />
+        )}
+
+        {/* Center */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Build tab */}
+          {centerTab === 'build' && (
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              {/* Prompt panel */}
+              <div
+                className="flex w-[360px] shrink-0 flex-col border-r"
+                style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-card)' }}
+              >
+                <div className="border-b p-4" style={{ borderColor: 'var(--theme-border)' }}>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">
+                    Describe a change
+                  </p>
+                  <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) editMutation.mutate(prompt.trim()) }}
+                    placeholder="What would you like to build or change?"
+                    rows={4}
+                    className="w-full resize-none rounded-xl border px-3 py-2.5 text-[13px] outline-none placeholder:text-[var(--theme-muted)]"
+                    style={{ background: 'var(--theme-input)', borderColor: 'var(--theme-border)', color: 'var(--theme-text)' }}
+                  />
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {EXAMPLE_PROMPTS.map(ex => (
+                      <button
+                        key={ex}
+                        onClick={() => setPrompt(ex)}
+                        className="flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors"
+                        style={{
+                          borderColor: `color-mix(in srgb, ${accent} 25%, var(--theme-border))`,
+                          color: 'var(--theme-muted)',
+                          background: `color-mix(in srgb, ${accent} 5%, transparent)`,
+                        }}
+                      >
+                        <HugeiconsIcon icon={SparklesIcon} size={9} />
+                        {ex}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => editMutation.mutate(prompt.trim())}
+                    disabled={!prompt.trim() || editMutation.isPending}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-white disabled:opacity-40"
+                    style={{ background: gradient, boxShadow: glow }}
+                  >
+                    <HugeiconsIcon icon={editMutation.isPending ? Loading03Icon : SentIcon} size={14}
+                      className={editMutation.isPending ? 'animate-spin' : ''} />
+                    {editMutation.isPending ? 'Queuing…' : 'Send  ⌘↵'}
+                  </button>
+                </div>
+
+                {/* Edit history */}
+                <div className="flex-1 overflow-y-auto p-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">
+                    Edit History
+                  </p>
+                  {enrichedEdits.length === 0 ? (
+                    <p className="py-4 text-center text-[12px] text-[var(--theme-muted)]">No edits yet</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {enrichedEdits.map(e => (
+                        <EditItem key={e.taskId} req={e} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Build log */}
+                {buildOutput && (
+                  <div className="border-t p-3" style={{ borderColor: 'var(--theme-border)' }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: buildOutput.ok ? '#10b981' : '#ef4444' }}>
+                        {buildOutput.ok ? 'Build OK' : 'Build Failed'}
+                      </span>
+                      <button onClick={() => setBuildOutput(null)} className="text-[var(--theme-muted)]">
+                        <HugeiconsIcon icon={Cancel01Icon} size={12} />
+                      </button>
+                    </div>
+                    <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap text-[10px] text-[var(--theme-muted)]">
+                      {buildOutput.log}
+                    </pre>
+                  </div>
+                )}
               </div>
-              <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-[#c9d1d9]">
-                {buildOutput.log || '(no output)'}
-              </pre>
+
+              {/* Preview iframe */}
+              <div className="flex min-w-0 flex-1 flex-col bg-[var(--theme-bg)]">
+                {status && !status.server ? (
+                  <div className="flex flex-1 items-center justify-center p-8 text-center">
+                    <div>
+                      <HugeiconsIcon icon={Globe02Icon} size={40} className="mx-auto mb-4" style={{ color: accent, opacity: 0.3 }} />
+                      <p className="text-[14px] font-semibold text-[var(--theme-text)]">Site Studio requires server repos</p>
+                      <p className="mt-1 text-[12px] text-[var(--theme-muted)]">
+                        Edits and deploys run against staged site repos on the server, which aren't present here.
+                      </p>
+                    </div>
+                  </div>
+                ) : siteUrl ? (
+                  <iframe
+                    key={iframeKey}
+                    src={siteUrl}
+                    className="h-full w-full border-0"
+                    title={`Preview — ${current?.name}`}
+                  />
+                ) : (
+                  <div className="flex flex-1 items-center justify-center">
+                    <p className="text-[13px] text-[var(--theme-muted)]">Select a site to preview</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* action bar */}
-          <div className="flex shrink-0 items-center gap-2 border-t border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-2.5">
-            <button
-              onClick={() => buildMutation.mutate()}
-              disabled={busy}
-              className="flex items-center gap-1.5 rounded-lg border border-[var(--theme-border)] px-3 py-1.5 text-[12px] font-medium text-[var(--theme-text)] transition-colors hover:bg-[var(--theme-hover)] disabled:opacity-40"
-            >
-              <HugeiconsIcon icon={SourceCodeIcon} size={13} />
-              {buildMutation.isPending ? 'Building…' : 'Build'}
-            </button>
-
-            <button
-              onClick={onRevert}
-              disabled={busy}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-[var(--theme-muted)] transition-colors hover:bg-[var(--theme-hover)] hover:text-[var(--theme-text)] disabled:opacity-40"
-            >
-              <HugeiconsIcon icon={ArrowTurnBackwardIcon} size={13} />
-              {revertMutation.isPending ? 'Reverting…' : 'Revert last change'}
-            </button>
-
-            <button
-              onClick={onDeploy}
-              disabled={busy}
-              className="ml-auto flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-[12px] font-semibold text-white transition-opacity disabled:opacity-40"
-              style={{ background: gradient, boxShadow: glow }}
-            >
-              <HugeiconsIcon icon={Rocket01Icon} size={13} />
-              {deployMutation.isPending ? 'Deploying…' : 'Deploy to Live'}
-            </button>
-          </div>
-
-          {/* recent changes */}
-          {current && current.lastCommits.length > 0 && (
-            <div className="max-h-32 shrink-0 overflow-y-auto border-t border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-2">
-              <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--theme-muted)] opacity-70">
-                Recent changes
+          {/* Preview tab — fullscreen iframe */}
+          {centerTab === 'preview' && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex items-center gap-2 border-b px-4 py-2" style={{ borderColor: 'var(--theme-border)' }}>
+                <span className="text-[12px] font-mono text-[var(--theme-muted)] truncate flex-1">{siteUrl || 'No site URL'}</span>
+                <button onClick={() => setIframeKey(k => k + 1)} className="rounded-lg p-1 hover:bg-[var(--theme-hover)]">
+                  <HugeiconsIcon icon={RefreshIcon} size={14} className="text-[var(--theme-muted)]" />
+                </button>
               </div>
-              <ul className="space-y-0.5">
-                {current.lastCommits.slice(0, 8).map((commit) => (
-                  <li key={commit.hash} className="flex items-baseline gap-2 text-[11px]">
-                    <span className="shrink-0 font-mono text-[var(--theme-muted)]">{commit.hash}</span>
-                    <span className="truncate text-[var(--theme-text)]">{commit.subject}</span>
-                  </li>
+              {siteUrl ? (
+                <iframe key={`preview-${iframeKey}`} src={siteUrl} className="flex-1 border-0 w-full" title="Full preview" />
+              ) : (
+                <div className="flex flex-1 items-center justify-center">
+                  <p className="text-[13px] text-[var(--theme-muted)]">No live URL for selected site</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Code tab */}
+          {centerTab === 'code' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+              <div className="rounded-2xl border flex-1 overflow-hidden" style={{ borderColor: 'var(--theme-border)' }}>
+                <div className="flex items-center gap-2 border-b px-4 py-2" style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-card)' }}>
+                  <HugeiconsIcon icon={SourceCodeIcon} size={14} className="text-[var(--theme-muted)]" />
+                  <span className="text-[12px] text-[var(--theme-muted)]">Source Code</span>
+                </div>
+                <div className="flex flex-1 items-center justify-center p-8 text-center">
+                  <div>
+                    <HugeiconsIcon icon={CodeIcon} size={40} className="mx-auto mb-4" style={{ color: accent, opacity: 0.25 }} />
+                    <p className="text-[14px] font-semibold text-[var(--theme-text)]">Code view coming soon</p>
+                    <p className="mt-1 text-[12px] text-[var(--theme-muted)]">
+                      Browse and edit generated HTML/CSS/JS directly in a future update.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Media tab */}
+          {centerTab === 'media' && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {/* Media sub-tabs */}
+              <div className="flex items-center gap-4 border-b px-6 py-2" style={{ borderColor: 'var(--theme-border)' }}>
+                {([
+                  { key: 'image' as const, label: 'Image Generation', icon: ImageAdd01Icon },
+                  { key: 'video' as const, label: 'Video Generation', icon: Video01Icon },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setMediaTab(tab.key)}
+                    className={cn('flex items-center gap-1.5 border-b-2 pb-2 text-[12px] font-semibold transition-colors -mb-px',
+                      mediaTab === tab.key ? 'border-current' : 'border-transparent text-[var(--theme-muted)] hover:text-[var(--theme-text)]'
+                    )}
+                    style={mediaTab === tab.key ? { color: accent, borderColor: accent } : undefined}
+                  >
+                    <HugeiconsIcon icon={tab.icon} size={13} />
+                    {tab.label}
+                  </button>
                 ))}
-              </ul>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {mediaTab === 'image' && <ImageGenerator accent={accent} />}
+                {mediaTab === 'video' && <VideoGenerator accent={accent} />}
+              </div>
             </div>
           )}
         </div>
@@ -452,95 +944,13 @@ export function SiteStudioScreen() {
   )
 }
 
-// ── Edit request row (status + expandable live log) ─────────────────────────────
-
-function EditRow({ edit, brandQ }: { edit: EditRequest; brandQ: string }) {
-  const [expanded, setExpanded] = useState(false)
-
-  const taskQuery = useQuery<DevTask | null>({
-    queryKey: ['site-studio', 'task', edit.taskId, brandQ],
-    queryFn: async () => {
-      const res = await fetch(`/api/dev/tasks/${edit.taskId}${brandQ}`)
-      if (!res.ok) return null
-      const d = (await res.json()) as { task?: DevTask }
-      return d.task ?? null
-    },
-    refetchInterval: (q) => {
-      const s = q.state.data?.status
-      return s === 'queued' || s === 'running' ? 3000 : false
-    },
-  })
-  const task = taskQuery.data
-  const taskStatus: DevTaskStatus = task?.status ?? 'queued'
-  const color = STATUS_COLOR[taskStatus]
-  const active = taskStatus === 'queued' || taskStatus === 'running'
-
+function StudioStyles() {
   return (
-    <div className="mb-1.5 rounded-lg border border-[var(--theme-border)]">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-start gap-2 px-2.5 py-2 text-left"
-      >
-        <span
-          className={cn('mt-1 inline-block h-2 w-2 shrink-0 rounded-full', active && 'animate-pulse')}
-          style={{ background: color }}
-        />
-        <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-[12px] text-[var(--theme-text)]">{edit.prompt}</span>
-          <span className="mt-0.5 block text-[10px] font-medium" style={{ color }}>
-            {STATUS_LABEL[taskStatus]}
-          </span>
-        </span>
-        <span className="mt-0.5 text-[10px] text-[var(--theme-muted)]">{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && <EditLog taskId={edit.taskId} brandQ={brandQ} active={active} />}
-    </div>
-  )
-}
-
-function EditLog({ taskId, brandQ, active }: { taskId: string; brandQ: string; active: boolean }) {
-  const [log, setLog] = useState('')
-  const offsetRef = useRef(0)
-  const boxRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    setLog('')
-    offsetRef.current = 0
-  }, [taskId])
-
-  const fetchLog = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/dev/tasks/${taskId}/log${brandQ}&offset=${offsetRef.current}`)
-      if (!res.ok) return
-      const d = (await res.json()) as { content: string; size: number }
-      if (d.content) setLog((prev) => prev + d.content)
-      offsetRef.current = d.size
-    } catch {
-      // transient poll failure — retry next tick
-    }
-  }, [taskId, brandQ])
-
-  useEffect(() => {
-    void fetchLog()
-    if (!active) return
-    const t = setInterval(() => void fetchLog(), 2500)
-    return () => clearInterval(t)
-  }, [fetchLog, active])
-
-  useEffect(() => {
-    if (!active) void fetchLog()
-  }, [active, fetchLog])
-
-  useEffect(() => {
-    const box = boxRef.current
-    if (box) box.scrollTop = box.scrollHeight
-  }, [log])
-
-  return (
-    <div ref={boxRef} className="max-h-48 overflow-y-auto rounded-b-lg bg-[#0d1117] p-2">
-      <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-[#c9d1d9]">
-        {log || (active ? 'Waiting for output…' : 'No output captured.')}
-      </pre>
-    </div>
+    <style>{`
+      @keyframes studioFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    `}</style>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams } from '@tanstack/react-router'
+import { useParams, useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { speakText, stopSpeech } from '@/lib/speak'
 import {
@@ -1152,6 +1152,7 @@ function LessonPlayer({
 
 export function LearnScreen() {
   const params = useParams({ from: '/learn/$slug' })
+  const navigate = useNavigate()
   const slug = params.slug
   const brand = 'hfm'
 
@@ -1329,15 +1330,43 @@ export function LearnScreen() {
         style={{ background: 'rgba(10,8,6,0.97)', backdropFilter: 'blur(16px)', borderColor: 'rgba(196,160,78,0.12)' }}
       >
         <div className="mx-auto flex max-w-7xl items-center gap-4">
+          {/* Back to catalog — always visible */}
+          <button
+            onClick={() => void navigate({ to: '/training-catalog' })}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all hover:opacity-80"
+            style={{ background: 'rgba(196,160,78,0.08)', color: '#c4a04e', border: '1px solid rgba(196,160,78,0.2)' }}
+          >
+            <HugeiconsIcon icon={ArrowLeft01Icon} size={12} />
+            <span className="hidden sm:inline">Academy</span>
+          </button>
+
+          {/* Breadcrumb */}
+          <div className="hidden items-center gap-1.5 text-[11px] sm:flex" style={{ color: '#7a6e60' }}>
+            <span
+              onClick={() => void navigate({ to: '/training-catalog' })}
+              className="cursor-pointer hover:text-[#c4a04e] transition-colors"
+            >
+              Training
+            </span>
+            <span style={{ color: 'rgba(196,160,78,0.3)' }}>›</span>
+            <span style={{ color: '#ede5d8' }} className="truncate max-w-[180px]">{module.title}</span>
+            {activeLesson && (
+              <>
+                <span style={{ color: 'rgba(196,160,78,0.3)' }}>›</span>
+                <span className="truncate max-w-[140px]" style={{ color: '#9a8870' }}>{activeLesson.title}</span>
+              </>
+            )}
+          </div>
+
           <button
             onClick={() => setSidebarOpen(v => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden"
+            className="flex h-8 w-8 items-center justify-center rounded-lg lg:hidden ml-auto"
             style={{ background: 'rgba(196,160,78,0.1)', color: '#c4a04e' }}
           >
             <HugeiconsIcon icon={BookOpen01Icon} size={16} />
           </button>
 
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+          <div className="hidden lg:flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
             style={{ background: 'linear-gradient(135deg, #a3843b, #c4a04e)' }}>
             <HugeiconsIcon icon={SchoolIcon} size={16} className="text-white" />
           </div>

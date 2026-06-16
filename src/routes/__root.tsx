@@ -112,9 +112,16 @@ export function navItems(brandId: string): { section: string; items: NavItem[] }
       items: [
         { to: '/social', label: 'Social', icon: Share04Icon },
         { to: '/campaigns', label: 'Campaigns', icon: Mail01Icon },
+        { to: '/site-studio', label: 'Site Studio', icon: Globe02Icon },
         { to: '/media', label: 'Media Studio', icon: ImageAdd01Icon },
       ],
     },
+    ...(brandId === 'hfm' ? [{
+      section: 'Academy',
+      items: [
+        { to: '/training-catalog', label: 'Learn', icon: SchoolIcon },
+      ],
+    }] : []),
     {
       section: 'Manage',
       items: [
@@ -146,6 +153,7 @@ export function allNavItems(brandId: string): NavItem[] {
     { to: '/forms', label: 'Forms', icon: TaskEdit01Icon },
     { to: '/surveys', label: 'Surveys', icon: Quiz03Icon },
     { to: '/training', label: 'Training', icon: SchoolIcon },
+    { to: '/training-catalog', label: 'Academy', icon: SchoolIcon },
     { to: '/daily-wellness', label: 'Daily Wellness', icon: Fire03Icon },
     { to: '/social', label: 'Social', icon: Share04Icon },
     { to: '/social-intel', label: 'Social Intelligence', icon: ChartLineData01Icon },
