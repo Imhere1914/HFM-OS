@@ -5,15 +5,10 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Agreement01Icon,
   PlusSignIcon,
-  Tick01Icon,
-  Mail01Icon,
-  Clock01Icon,
-  CheckmarkCircle01Icon,
   Archive01Icon,
   Delete01Icon,
   Copy01Icon,
   DocumentValidationIcon,
-  ArrowLeft01Icon,
   GridIcon,
 } from '@hugeicons/core-free-icons'
 import { useBrand } from '@/contexts/BrandContext'

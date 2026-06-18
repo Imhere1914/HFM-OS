@@ -1,4 +1,4 @@
-import type { Hono } from 'hono'
+import type { Hono, Context } from 'hono'
 import {
   listAgreements,
   getAgreement,
@@ -14,18 +14,19 @@ import {
   upsertField,
   updateField,
   deleteField,
-  deleteFieldsForDoc,
+
   listAgreementTemplates,
   createAgreementTemplate,
   updateAgreementTemplate,
   deleteAgreementTemplate,
   sendAgreementEmails,
 } from '../stores/agreements-store'
-import type { AgreementField, AgreementRecipient } from '../stores/agreements-store'
+import type { AgreementField, AgreementRecipient, AgreementStatus, AgreementType } from '../stores/agreements-store'
 import { appendNotification } from '../stores/notifications-store'
 import { getBrandId } from '../lib/brand'
 
-function getOrigin(c: Parameters<Parameters<Hono['get']>[1]>[0]): string {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getOrigin(c: Context<any, any, any>): string {
   const proto = c.req.header('x-forwarded-proto') ?? 'http'
   const host = c.req.header('x-forwarded-host') ?? c.req.header('host') ?? 'localhost'
   return `${proto}://${host}`
@@ -155,9 +156,9 @@ export function registerAgreements(app: Hono) {
   app.get('/api/agreements', (c) => {
     const brand = getBrandId(c)
     const url = new URL(c.req.url)
-    const status = url.searchParams.get('status') as Parameters<typeof listAgreements>[1]['status'] | undefined
-    const type = url.searchParams.get('type') as Parameters<typeof listAgreements>[1]['type'] | undefined
-    const docs = listAgreements(brand, { status: status ?? undefined, type: type ?? undefined })
+    const status = (url.searchParams.get('status') ?? undefined) as AgreementStatus | undefined
+    const type = (url.searchParams.get('type') ?? undefined) as AgreementType | undefined
+    const docs = listAgreements(brand, { status, type })
     // Attach recipient counts
     const result = docs.map(d => {
       const recipients = listRecipients(brand, d.id)

@@ -143,7 +143,7 @@ export async function deleteAgreement(brand: string, id: string): Promise<void> 
   })
 }
 
-export async function sendAgreement(brand: string, id: string, body: { sender_name?: string; sender_email?: string; recipients?: AgreementRecipient[] }): Promise<AgreementDocument> {
+export async function sendAgreement(brand: string, id: string, body: { sender_name?: string; sender_email?: string; recipients?: AgreementRecipient[]; personal_message?: string }): Promise<AgreementDocument> {
   return apiFetch<AgreementDocument>(`/api/agreements/${id}/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Brand': brand },

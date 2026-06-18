@@ -6,4 +6,4 @@ function RouteComponent() {
   return <AgreementEditorScreen id={id} />
 }
 
-export const Route = createFileRoute('/agreements/$id')({ component: RouteComponent })
+export const Route = createFileRoute('/agreements_/$id')({ component: RouteComponent })
