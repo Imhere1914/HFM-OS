@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { SentIcon, Mic01Icon, AiMagicIcon, VolumeHighIcon, VolumeOffIcon } from '@hugeicons/core-free-icons'
 import { sendChat, type ChatMessage } from '@/lib/chat-api'
+import { speakText, stopSpeech, getStoredVoiceModelId, unlockAudioForIOS } from '@/lib/speak'
 import { useBrand } from '@/contexts/BrandContext'
 import { toast } from '@/components/toast'
 
@@ -87,12 +88,8 @@ export function ChatScreen() {
   }, [messages])
 
   function stopSpeaking() {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-      audioRef.current = null
-    }
-    window.speechSynthesis?.cancel()
+    stopSpeech(audioRef.current)
+    audioRef.current = null
     setSpeaking(false)
   }
 
@@ -100,43 +97,11 @@ export function ChatScreen() {
     if (!voiceOut || !text) return
     stopSpeaking()
     setSpeaking(true)
-
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      })
-      if (res.ok && res.body) {
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const audio = new Audio(url)
-        audioRef.current = audio
-        audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url) }
-        audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url) }
-        await audio.play()
-        return
-      }
-    } catch { /* server TTS unavailable, fall through */ }
-
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      const cleaned = text.replace(/```[\s\S]*?```/g, '').replace(/[*_~#`]/g, '').trim()
-      if (!cleaned) { setSpeaking(false); return }
-      const u = new SpeechSynthesisUtterance(cleaned.slice(0, 2000))
-      const voices = window.speechSynthesis.getVoices()
-      const preferred = voices.find(v => /samantha|karen|google.*us|microsoft.*zira|enhanced/i.test(v.name))
-        ?? voices.find(v => v.lang.startsWith('en') && !v.localService)
-        ?? voices.find(v => v.lang.startsWith('en'))
-      if (preferred) u.voice = preferred
-      u.rate = 1.05
-      u.pitch = 1.0
-      u.onend = () => setSpeaking(false)
-      u.onerror = () => setSpeaking(false)
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(u)
-    } else {
-      setSpeaking(false)
-    }
+    await speakText(text, {
+      modelId: getStoredVoiceModelId(),
+      onEnd: () => setSpeaking(false),
+      onError: () => setSpeaking(false),
+    })
   }, [voiceOut])
 
   async function submit(text: string) {
@@ -158,6 +123,7 @@ export function ChatScreen() {
   }
 
   async function toggleVoice() {
+    unlockAudioForIOS() // synchronous — must run within the user gesture
     if (listening) {
       // Stop recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {

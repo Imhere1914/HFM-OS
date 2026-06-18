@@ -50,7 +50,18 @@ function defaultModel(): string {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(brand?: string): string {
+const VOICE_ADDENDUM = `
+
+## Voice mode — STRICT rules
+You are responding via spoken audio. Follow these without exception:
+- Maximum 2 sentences. Never more.
+- No lists, no bullet points, no markdown, no headers, no numbered steps.
+- No filler openers like "Great question!" or "Certainly!" — start with the answer.
+- Speak the way a knowledgeable friend talks on the phone: direct, warm, casual.
+- If the answer genuinely needs more detail, give the key point now and offer to continue.
+- Numbers and times should sound natural when spoken aloud — say "about fifty dollars" not "$50.00".`
+
+function buildSystemPrompt(brand?: string, voice = false): string {
   const b = brand ?? brandId()
   const knowledgeCtx = buildAssistantContext(b)
   const businessCtx = buildBusinessContext(b)
@@ -72,18 +83,22 @@ You help manage the business through this AI Operating System: pipeline, contact
 Sound like a real person, not a bot. Write the way a sharp, warm colleague texts — natural, flowing sentences, a little personality, contractions, the occasional aside. Vary your rhythm. React to what they actually said before diving in. Never robotic, never a wall of bullet points unless they ask for a list. Be genuinely helpful and concise, but human first. Don't over-explain or pad. If something's good news, sound a little pleased; if something needs attention, say so plainly and kindly.`
 
   const withKnowledge = knowledgeCtx ? `${base}\n\n## Business Knowledge\n${knowledgeCtx}` : base
+  const withBusiness = businessCtx ? `${withKnowledge}\n\n${businessCtx}` : withKnowledge
 
-  return businessCtx ? `${withKnowledge}\n\n${businessCtx}` : withKnowledge
+  return voice ? `${withBusiness}${VOICE_ADDENDUM}` : withBusiness
 }
 
 // ── OpenRouter direct call ────────────────────────────────────────────────────
 
-async function callOpenRouter(messages: ChatMessage[], brand: string): Promise<{ reply: string; live: boolean; model: string }> {
+// Faster, cheaper model for voice — snappy replies matter more than depth
+const VOICE_MODEL = 'google/gemini-flash-1.5-8b'
+
+async function callOpenRouter(messages: ChatMessage[], brand: string, voice = false): Promise<{ reply: string; live: boolean; model: string }> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error('no key')
 
-  const model = defaultModel()
-  const systemPrompt = buildSystemPrompt(brand)
+  const model = voice ? VOICE_MODEL : defaultModel()
+  const systemPrompt = buildSystemPrompt(brand, voice)
 
   const headers = {
     'Content-Type': 'application/json',
@@ -235,11 +250,12 @@ export function registerChat(app: Hono): void {
     if (messages.length === 0) return c.json({ error: 'messages is required' }, 400)
 
     const brand = c.req.query('brand') ?? process.env.BRAND ?? 'default'
+    const voice = b.voice === true
 
     // 1. OpenRouter (preferred — cheapest path, full context)
     if (process.env.OPENROUTER_API_KEY) {
       try {
-        const result = await callOpenRouter(messages, brand)
+        const result = await callOpenRouter(messages, brand, voice)
         return c.json({ ...result, brand: brandName() })
       } catch (err) {
         console.error('[chat] OpenRouter error:', (err as Error).message)

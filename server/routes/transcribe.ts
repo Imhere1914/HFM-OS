@@ -1,10 +1,67 @@
 import type { Hono } from 'hono'
 
+// ── Gladia v2 transcription ───────────────────────────────────────────────────
+
+async function transcribeWithGladia(audioFile: Blob, apiKey: string): Promise<string> {
+  // Step 1: upload audio → get hosted URL
+  const uploadForm = new FormData()
+  uploadForm.append('audio', audioFile, 'audio.webm')
+
+  const uploadRes = await fetch('https://api.gladia.io/v2/upload', {
+    method: 'POST',
+    headers: { 'x-gladia-key': apiKey },
+    body: uploadForm,
+  })
+  if (!uploadRes.ok) throw new Error(`Gladia upload ${uploadRes.status}: ${await uploadRes.text()}`)
+  const { audio_url } = await uploadRes.json() as { audio_url: string }
+
+  // Step 2: submit transcription job
+  const jobRes = await fetch('https://api.gladia.io/v2/pre-recorded', {
+    method: 'POST',
+    headers: { 'x-gladia-key': apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio_url, language: 'en', diarization: false }),
+  })
+  if (!jobRes.ok) throw new Error(`Gladia job ${jobRes.status}: ${await jobRes.text()}`)
+  const { id } = await jobRes.json() as { id: string }
+
+  // Step 3: poll until done (Gladia is typically <2s for short clips)
+  for (let i = 0; i < 24; i++) {
+    await new Promise(r => setTimeout(r, 500))
+    const pollRes = await fetch(`https://api.gladia.io/v2/pre-recorded/${id}`, {
+      headers: { 'x-gladia-key': apiKey },
+    })
+    const data = await pollRes.json() as {
+      status: string
+      result?: { transcription?: { full_transcript?: string } }
+    }
+    if (data.status === 'done') return data.result?.transcription?.full_transcript ?? ''
+    if (data.status === 'error') throw new Error('Gladia transcription error')
+  }
+  throw new Error('Gladia transcription timed out')
+}
+
+// ── Whisper fallback ──────────────────────────────────────────────────────────
+
+async function transcribeWithWhisper(audioFile: Blob, apiKey: string): Promise<string> {
+  const fd = new FormData()
+  fd.append('file', audioFile, 'audio.webm')
+  fd.append('model', 'whisper-1')
+  fd.append('language', 'en')
+
+  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: fd,
+  })
+  if (!res.ok) throw new Error(`Whisper ${res.status}: ${await res.text()}`)
+  const data = await res.json() as { text: string }
+  return data.text
+}
+
+// ── Route ─────────────────────────────────────────────────────────────────────
+
 export function registerTranscribe(app: Hono) {
   app.post('/api/transcribe', async (c) => {
-    const apiKey = process.env.OPENROUTER_API_KEY
-    if (!apiKey) return c.json({ error: 'No API key configured' }, 503)
-
     try {
       const formData = await c.req.formData()
       const audioFile = formData.get('audio')
@@ -12,31 +69,22 @@ export function registerTranscribe(app: Hono) {
         return c.json({ error: 'No audio file provided' }, 400)
       }
 
-      // Forward to OpenAI Whisper via direct OpenAI endpoint
-      // (OpenRouter doesn't support audio — use OpenAI directly if OPENAI_API_KEY set, else fallback)
+      const gladiaKey = process.env.GLADIA_API_KEY
       const openaiKey = process.env.OPENAI_API_KEY
-      if (!openaiKey) {
-        return c.json({ error: 'OPENAI_API_KEY required for Whisper transcription' }, 503)
+
+      if (!gladiaKey && !openaiKey) {
+        return c.json({ error: 'GLADIA_API_KEY or OPENAI_API_KEY required for transcription' }, 503)
       }
 
-      const fd = new FormData()
-      fd.append('file', audioFile as Blob, 'audio.webm')
-      fd.append('model', 'whisper-1')
-      fd.append('language', 'en')
+      let transcript: string
 
-      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${openaiKey}` },
-        body: fd,
-      })
-
-      if (!res.ok) {
-        const err = await res.text()
-        return c.json({ error: `Whisper error: ${err}` }, 502)
+      if (gladiaKey) {
+        transcript = await transcribeWithGladia(audioFile as Blob, gladiaKey)
+      } else {
+        transcript = await transcribeWithWhisper(audioFile as Blob, openaiKey!)
       }
 
-      const data = await res.json() as { text: string }
-      return c.json({ transcript: data.text })
+      return c.json({ transcript })
     } catch (e) {
       return c.json({ error: (e as Error).message }, 500)
     }

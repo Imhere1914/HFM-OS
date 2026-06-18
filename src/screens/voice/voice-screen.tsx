@@ -11,6 +11,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { useBrand } from '@/contexts/BrandContext'
 import { VOICE_MODELS, BRAND_DEFAULT_VOICE, getVoiceModel, type VoiceModel } from '@/lib/voice-models'
+import { speakText, stopSpeech, unlockAudioForIOS } from '@/lib/speak'
 import { toast } from '@/components/toast'
 
 type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking'
@@ -228,11 +229,8 @@ export function VoiceScreen() {
   }, [messages])
 
   function stopAudio() {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ''
-      audioRef.current = null
-    }
+    stopSpeech(audioRef.current)
+    audioRef.current = null
   }
 
   async function selectAvatar(id: string) {
@@ -249,51 +247,16 @@ export function VoiceScreen() {
     } catch {}
   }
 
-  const speakText = useCallback(async (text: string) => {
+  const doSpeak = useCallback(async (text: string) => {
     if (muted) return
     stopAudio()
     setVoiceState('speaking')
     setStatusText('Speaking…')
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice_model_id: selectedId }),
-      })
-      if (!res.ok) throw new Error('TTS failed')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        setVoiceState('idle')
-        setStatusText('Tap to speak')
-        audioRef.current = null
-      }
-      audio.onerror = () => {
-        setVoiceState('idle')
-        setStatusText('Tap to speak')
-      }
-      await audio.play()
-    } catch {
-      // fallback to Web Speech API
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel()
-        const utt = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, '').replace(/[*_~`#]/g, ''))
-        const voices = window.speechSynthesis.getVoices()
-        const preferred = voices.find(v =>
-          /samantha|karen|google.*us|microsoft.*zira|enhanced/i.test(v.name)
-        )
-        if (preferred) utt.voice = preferred
-        utt.rate = 1.05
-        utt.onend = () => { setVoiceState('idle'); setStatusText('Tap to speak') }
-        window.speechSynthesis.speak(utt)
-      } else {
-        setVoiceState('idle')
-        setStatusText('Tap to speak')
-      }
-    }
+    await speakText(text, {
+      modelId: selectedId,
+      onEnd: () => { setVoiceState('idle'); setStatusText('Tap to speak'); audioRef.current = null },
+      onError: () => { setVoiceState('idle'); setStatusText('Tap to speak') },
+    })
   }, [muted, selectedId])
 
   function clearSilenceTracking() {
@@ -377,9 +340,10 @@ export function VoiceScreen() {
       const fd = new FormData()
       fd.append('audio', audioBlob, 'voice.webm')
       const txRes = await fetch('/api/transcribe', { method: 'POST', body: fd })
-      const txData = await txRes.json() as { text?: string; error?: string }
-      const userText = txData.text?.trim()
+      const txData = await txRes.json() as { transcript?: string; error?: string }
+      const userText = txData.transcript?.trim()
       if (!userText) {
+        if (txData.error) toast(txData.error, { type: 'error' })
         setVoiceState('idle')
         setStatusText('Tap to speak')
         return
@@ -389,11 +353,11 @@ export function VoiceScreen() {
       const newMessages: Message[] = [...messages, { role: 'user', content: userText }]
       setMessages(newMessages)
 
-      // Chat with Hermes
+      // Chat with Hermes — voice mode: shorter, conversational responses
       const chatRes = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages.slice(-8) }),
+        body: JSON.stringify({ messages: newMessages.slice(-6), voice: true }),
       })
       const chatData = await chatRes.json() as { reply?: string; error?: string }
       const reply = chatData.reply?.trim()
@@ -404,7 +368,7 @@ export function VoiceScreen() {
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: reply }])
-      await speakText(reply)
+      await doSpeak(reply)
     } catch (e) {
       toast((e as Error).message, { type: 'error' })
       setVoiceState('idle')
@@ -415,6 +379,7 @@ export function VoiceScreen() {
   // Single-tap toggle
   function onMicTap(e: React.MouseEvent | React.TouchEvent) {
     e.preventDefault()
+    unlockAudioForIOS() // must run synchronously within the gesture event
     if (voiceState === 'idle') {
       void startListening()
     } else if (voiceState === 'listening') {

@@ -14,7 +14,10 @@ const BRAND_DEFAULT: Record<string, string> = { sc: 'marcus', hfm: 'nova' }
 
 export function registerTts(app: Hono) {
   app.post('/api/tts', async (c) => {
-    const openaiKey = process.env.OPENAI_API_KEY
+    const brand = process.env.BRAND ?? 'sc'
+    const openaiKey = brand === 'hfm'
+      ? (process.env.OPENAI_API_KEY_HFM ?? process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY
     if (!openaiKey) return c.json({ error: 'OPENAI_API_KEY required for TTS' }, 503)
 
     const body = await c.req.json<{ text?: string; voice?: string; voice_model_id?: string }>()
@@ -36,8 +39,6 @@ export function registerTts(app: Hono) {
 
     const truncated = cleaned.length > 4096 ? cleaned.slice(0, 4096) + '...' : cleaned
 
-    const brand = process.env.BRAND ?? 'sc'
-
     // Resolve voice: explicit voice name > voice_model_id > stored pref > brand default
     let voice: string
     if (body.voice && Object.values(VOICE_MAP).includes(body.voice)) {
@@ -58,11 +59,11 @@ export function registerTts(app: Hono) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'tts-1',
+          model: 'tts-1-hd',
           input: truncated,
           voice,
           response_format: 'mp3',
-          speed: 1.05,
+          speed: 1.0,
         }),
       })
 
