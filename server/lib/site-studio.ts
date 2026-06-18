@@ -45,6 +45,12 @@ export const SITES: Record<SiteKey, SiteDef> = {
   },
 }
 
+/** Internal nginx preview ports (serve from deployTo docroot, no HTTPS overhead). */
+export const SITE_PREVIEW_PORTS: Record<SiteKey, number> = {
+  sc: 8090,
+  hfm: 8091,
+}
+
 const COMMIT_PREFIX = 'Site Studio:'
 
 export function isSiteKey(v: unknown): v is SiteKey {

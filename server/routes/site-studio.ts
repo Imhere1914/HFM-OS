@@ -7,6 +7,7 @@
 import type { Hono } from 'hono'
 import {
   SITES,
+  SITE_PREVIEW_PORTS,
   isSiteKey,
   isServerEnvironment,
   siteStatus,
@@ -17,13 +18,70 @@ import {
   type SiteKey,
 } from '../lib/site-studio'
 
+/** Proxy an upstream nginx port response, rewriting root-relative asset paths. */
+async function proxyPreview(
+  site: SiteKey,
+  requestUrl: string,
+  acceptHeader: string | null
+): Promise<Response> {
+  const port = SITE_PREVIEW_PORTS[site]
+  const parsed = new URL(requestUrl)
+  const prefix = `/api/site-studio/${site}/preview`
+  const upstreamPath = parsed.pathname.slice(prefix.length) || '/'
+
+  const upstream = await fetch(`http://localhost:${port}${upstreamPath}${parsed.search}`, {
+    headers: { accept: acceptHeader ?? '*/*' },
+  })
+  const ct = upstream.headers.get('content-type') ?? ''
+
+  if (ct.includes('text/html')) {
+    let html = await upstream.text()
+    // Rewrite root-relative src/href/url() paths to go through this proxy
+    html = html.replace(/((?:src|href)=")(\/(?!\/))/g, `$1${prefix}/`)
+    html = html.replace(/(url\(['"]?)(\/(?!\/))/g, `$1${prefix}/`)
+    return new Response(html, {
+      status: upstream.status,
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' },
+    })
+  }
+
+  const buf = await upstream.arrayBuffer()
+  return new Response(buf, {
+    status: upstream.status,
+    headers: { 'content-type': ct, 'cache-control': 'no-cache' },
+  })
+}
+
 export function registerSiteStudio(app: Hono): void {
-  // GET /api/site-studio/status — server flag + both sites' status
+  // GET /api/site-studio/status — server flag + API key check + both sites' status
   app.get('/api/site-studio/status', (c) => {
     return c.json({
       server: isServerEnvironment(),
+      anthropic_key_set: !!process.env.ANTHROPIC_API_KEY,
       sites: (Object.keys(SITES) as SiteKey[]).map((k) => siteStatus(k)),
     })
+  })
+
+  // GET /api/site-studio/:site/preview[/*] — proxy to internal nginx (port 8090/8091)
+  // Rewrites asset paths so the preview renders correctly through this route.
+  app.get('/api/site-studio/:site/preview', async (c) => {
+    const site = c.req.param('site')
+    if (!isSiteKey(site)) return c.json({ error: 'Unknown site' }, 404)
+    try {
+      return await proxyPreview(site, c.req.url, c.req.header('accept') ?? null)
+    } catch (err) {
+      return c.json({ error: `Preview unavailable: ${(err as Error).message}` }, 502)
+    }
+  })
+
+  app.get('/api/site-studio/:site/preview/*', async (c) => {
+    const site = c.req.param('site')
+    if (!isSiteKey(site)) return c.json({ error: 'Unknown site' }, 404)
+    try {
+      return await proxyPreview(site, c.req.url, c.req.header('accept') ?? null)
+    } catch (err) {
+      return c.json({ error: `Preview unavailable: ${(err as Error).message}` }, 502)
+    }
   })
 
   // POST /api/site-studio/:site/edit — natural-language change → dev-task

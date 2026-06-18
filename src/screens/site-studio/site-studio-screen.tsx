@@ -4,7 +4,7 @@
  * CENTER: Build / Preview / Code / Media tabs with AI-prompt canvas
  * AI prompting → dev tasks → live preview, exactly like before but richer layout.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -52,7 +52,7 @@ interface ArchiveItem {
 
 interface SiteCommit { hash: string; subject: string }
 interface SiteStatus { key: SiteKey; name: string; url: string; lastCommits: SiteCommit[] }
-interface SiteStudioStatus { server: boolean; sites: SiteStatus[] }
+interface SiteStudioStatus { server: boolean; anthropic_key_set: boolean; sites: SiteStatus[] }
 interface DevTask { id: string; prompt: string; status: DevTaskStatus; created_at: string }
 interface EditRequest { taskId: string; prompt: string; site: SiteKey }
 interface GeneratedImage { url: string; prompt: string; id: string }
@@ -480,6 +480,8 @@ function VideoGenerator({ accent }: { accent: string }) {
 
 // ── Main Screen ─────────────────────────────────────────────────────────────────
 
+type PipelinePhase = 'idle' | 'editing' | 'building' | 'deploying'
+
 export function SiteStudioScreen() {
   const brand = useBrand()
   const accent = brand.accentColor
@@ -501,15 +503,23 @@ export function SiteStudioScreen() {
   const [archive, setArchive] = useState<ArchiveItem[]>(() => loadArchive())
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null)
 
-  useEffect(() => {
-    setEdits(loadEdits(site))
-    setBuildOutput(null)
-  }, [site])
+  // Auto-pipeline state (edit → build → deploy without manual intervention)
+  const [pipelinePhase, setPipelinePhase] = useState<PipelinePhase>('idle')
+  const [pipelineTaskId, setPipelineTaskId] = useState<string | null>(null)
+  const isAutoPipelineRef = useRef(false)
+  const buildTriggeredForRef = useRef<string | null>(null)
+
+  // Live log state
+  const [log, setLog] = useState('')
+  const logOffsetRef = useRef(0)
+  const logBoxRef = useRef<HTMLDivElement | null>(null)
 
   const persistEdits = useCallback((next: EditRequest[]) => {
     setEdits(next)
     saveEdits(site, next)
   }, [site])
+
+  // ── Queries ──
 
   const statusQuery = useQuery<SiteStudioStatus>({
     queryKey: ['site-studio', 'status'],
@@ -528,8 +538,78 @@ export function SiteStudioScreen() {
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
-    refetchInterval: edits.some(() => true) ? 5_000 : false,
-    enabled: edits.length > 0,
+    // Poll at 2s during active pipeline, 10s otherwise
+    refetchInterval: pipelinePhase === 'editing' ? 2_000 : edits.length > 0 ? 10_000 : false,
+    enabled: edits.length > 0 || pipelinePhase !== 'idle',
+  })
+
+  // ── Mutations (deploy must be defined before build so build's onSuccess can call it) ──
+
+  const revertMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/site-studio/${site}/revert`, { method: 'POST' })
+      return res.json() as Promise<{ ok: boolean; log: string }>
+    },
+    onSuccess: d => {
+      if (d.ok) {
+        toast('Reverted')
+        setIframeKey(k => k + 1)
+        void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] })
+      } else {
+        toast('Revert failed', { type: 'error' })
+      }
+    },
+  })
+
+  const deployMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/site-studio/${site}/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ summary: edits[0]?.prompt }),
+      })
+      return res.json() as Promise<{ ok: boolean; log: string; commitHash?: string }>
+    },
+    onSuccess: d => {
+      // Always reset pipeline on deploy completion
+      isAutoPipelineRef.current = false
+      setPipelinePhase('idle')
+      setPipelineTaskId(null)
+      setBuildOutput(d)
+      if (d.ok) {
+        toast(`Published${d.commitHash ? ` (${d.commitHash})` : ''}`)
+        setIframeKey(k => k + 1)
+        void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] })
+      } else {
+        toast('Publish failed', { type: 'error' })
+      }
+    },
+  })
+
+  const buildMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/site-studio/${site}/build`, { method: 'POST' })
+      return res.json() as Promise<{ ok: boolean; log: string }>
+    },
+    onSuccess: d => {
+      setBuildOutput(d)
+      if (isAutoPipelineRef.current) {
+        // Auto-pipeline: on success deploy; on failure abort
+        if (d.ok) {
+          setPipelinePhase('deploying')
+          deployMutation.mutate()
+        } else {
+          isAutoPipelineRef.current = false
+          setPipelinePhase('idle')
+          setPipelineTaskId(null)
+          toast('Build failed — check log below', { type: 'error' })
+        }
+      } else {
+        // Manual build
+        if (d.ok) { toast('Build succeeded — reloading preview'); setIframeKey(k => k + 1) }
+        else toast('Build failed', { type: 'error' })
+      }
+    },
   })
 
   const editMutation = useMutation({
@@ -544,69 +624,100 @@ export function SiteStudioScreen() {
       return { taskId: d.taskId, prompt: text }
     },
     onSuccess: ({ taskId, prompt: text }) => {
+      // Start auto-pipeline
+      isAutoPipelineRef.current = true
+      setPipelinePhase('editing')
+      setPipelineTaskId(taskId)
+      buildTriggeredForRef.current = null
+      setLog('')
+      logOffsetRef.current = 0
       persistEdits([{ taskId, prompt: text, site }, ...edits])
       setPrompt('')
-      toast('Edit queued — Claude is building')
+      toast('Claude is editing the site…')
     },
-    onError: e => toast(e instanceof Error ? e.message : 'Failed', { type: 'error' }),
+    onError: e => toast(e instanceof Error ? e.message : 'Failed to start edit', { type: 'error' }),
   })
 
-  const buildMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/site-studio/${site}/build`, { method: 'POST' })
-      return res.json() as Promise<{ ok: boolean; log: string }>
-    },
-    onSuccess: d => {
-      setBuildOutput(d)
-      if (d.ok) { toast('Build succeeded — reloading preview'); setIframeKey(k => k + 1) }
-      else toast('Build failed', { type: 'error' })
-    },
-  })
+  // ── Effects ──
 
-  const deployMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/site-studio/${site}/deploy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary: edits[0]?.prompt }),
-      })
-      return res.json() as Promise<{ ok: boolean; log: string; commitHash?: string }>
-    },
-    onSuccess: d => {
-      setBuildOutput(d)
-      if (d.ok) {
-        toast(`Published${d.commitHash ? ` (${d.commitHash})` : ''}`)
-        setIframeKey(k => k + 1)
-        void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] })
-      } else toast('Deploy failed', { type: 'error' })
-    },
-  })
+  // Reset on site switch
+  useEffect(() => {
+    setEdits(loadEdits(site))
+    setBuildOutput(null)
+    setLog('')
+    logOffsetRef.current = 0
+    setPipelinePhase('idle')
+    setPipelineTaskId(null)
+    isAutoPipelineRef.current = false
+    buildTriggeredForRef.current = null
+  }, [site])
 
-  const revertMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/site-studio/${site}/revert`, { method: 'POST' })
-      return res.json() as Promise<{ ok: boolean; log: string }>
-    },
-    onSuccess: d => {
-      if (d.ok) { toast('Reverted'); setIframeKey(k => k + 1); void queryClient.invalidateQueries({ queryKey: ['site-studio', 'status'] }) }
-      else toast('Revert failed', { type: 'error' })
-    },
-  })
+  const tasks = editTasksQuery.data?.tasks ?? []
+
+  // Auto-pipeline: when edit task completes → trigger build automatically
+  useEffect(() => {
+    if (pipelinePhase !== 'editing' || !pipelineTaskId) return
+    const task = tasks.find(t => t.id === pipelineTaskId)
+    if (!task) return
+    if (task.status === 'completed' && buildTriggeredForRef.current !== pipelineTaskId) {
+      buildTriggeredForRef.current = pipelineTaskId
+      setPipelinePhase('building')
+      buildMutation.mutate()
+    } else if (task.status === 'failed' || task.status === 'cancelled') {
+      isAutoPipelineRef.current = false
+      setPipelinePhase('idle')
+      setPipelineTaskId(null)
+      toast('Edit agent failed — see log below', { type: 'error' })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, pipelinePhase, pipelineTaskId])
+
+  // Live log polling while pipeline task is active
+  useEffect(() => {
+    if (!pipelineTaskId) return
+    const fetchLog = async () => {
+      try {
+        const res = await fetch(
+          `/api/dev/tasks/${pipelineTaskId}/log?brand=site-${site}&offset=${logOffsetRef.current}`
+        )
+        if (!res.ok) return
+        const d = await res.json() as { content: string; size: number }
+        if (d.content) {
+          setLog(prev => prev + d.content)
+          logOffsetRef.current = d.size
+        }
+      } catch { /* transient — retry next tick */ }
+    }
+    void fetchLog()
+    const interval = setInterval(() => void fetchLog(), 2000)
+    return () => clearInterval(interval)
+  }, [pipelineTaskId, site])
+
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    const box = logBoxRef.current
+    if (box) box.scrollTop = box.scrollHeight
+  }, [log])
+
+  // ── Derived values ──
 
   const status = statusQuery.data
   const sites = status?.sites ?? []
   const current = sites.find(s => s.key === site)
   const siteUrl = current?.url ?? ''
-  const busy = buildMutation.isPending || deployMutation.isPending || revertMutation.isPending
+  const busy = buildMutation.isPending || deployMutation.isPending || revertMutation.isPending || pipelinePhase !== 'idle'
+  const apiKeyMissing = status?.server && !status?.anthropic_key_set
 
   const gradient = `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 65%, #000))`
   const glow = `0 2px 8px color-mix(in srgb, ${accent} 38%, transparent)`
 
-  const tasks = editTasksQuery.data?.tasks ?? []
   const enrichedEdits = edits.map(e => ({
     ...e,
     status: tasks.find(t => t.id === e.taskId)?.status,
   }))
+
+  // Preview URL: use internal proxy when on server (gives fresh view after each deploy)
+  const previewSrc = status?.server ? `/api/site-studio/${site}/preview/` : siteUrl
 
   const handleNewArchiveItem = (type: ArchiveItemType) => {
     const name = window.prompt(`Name for new ${type === 'website' ? 'website' : 'landing page'}:`)
@@ -638,13 +749,19 @@ export function SiteStudioScreen() {
     { key: 'media', label: 'Media', icon: ImageAdd01Icon },
   ]
 
+  const PIPELINE_LABEL: Record<PipelinePhase, string> = {
+    idle: '',
+    editing: 'Claude is editing the site…',
+    building: 'Building changes…',
+    deploying: 'Publishing to live site…',
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <StudioStyles />
 
       {/* ── Top bar ── */}
       <div className="flex items-center gap-3 border-b px-4 py-2.5" style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-card)' }}>
-        {/* Brand icon */}
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white"
           style={{ background: gradient, boxShadow: glow }}
@@ -656,7 +773,6 @@ export function SiteStudioScreen() {
           <p className="text-[10px] text-[var(--theme-muted)]">Build, preview, and publish with AI</p>
         </div>
 
-        {/* Sidebar toggle */}
         <button
           onClick={() => setSidebarOpen(v => !v)}
           className="ml-2 rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-hover)]"
@@ -666,7 +782,6 @@ export function SiteStudioScreen() {
             style={{ transform: sidebarOpen ? 'none' : 'rotate(180deg)', transition: 'transform 0.2s' }} />
         </button>
 
-        {/* Center tabs */}
         <div
           className="ml-2 flex rounded-xl border p-0.5"
           style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-bg)' }}
@@ -688,7 +803,6 @@ export function SiteStudioScreen() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Site switcher */}
           <div className="flex rounded-lg border p-0.5" style={{ borderColor: 'var(--theme-border)' }}>
             {(['sc', 'hfm'] as const).map(k => {
               const s = sites.find(x => x.key === k)
@@ -708,7 +822,6 @@ export function SiteStudioScreen() {
             })}
           </div>
 
-          {/* Actions */}
           {centerTab !== 'media' && (
             <>
               <button
@@ -744,7 +857,6 @@ export function SiteStudioScreen() {
 
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Archive sidebar */}
         {sidebarOpen && (
           <ArchiveSidebar
             archive={archive}
@@ -756,16 +868,30 @@ export function SiteStudioScreen() {
           />
         )}
 
-        {/* Center */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* Build tab */}
           {centerTab === 'build' && (
             <div className="flex min-h-0 flex-1 overflow-hidden">
-              {/* Prompt panel */}
+              {/* Prompt + log panel */}
               <div
                 className="flex w-[360px] shrink-0 flex-col border-r"
                 style={{ borderColor: 'var(--theme-border)', background: 'var(--theme-card)' }}
               >
+                {/* API key warning banner */}
+                {apiKeyMissing && (
+                  <div className="border-b px-4 py-3" style={{ borderColor: '#f59e0b44', background: 'rgba(245,158,11,0.08)' }}>
+                    <p className="text-[11px] font-bold text-amber-400">⚠ ANTHROPIC_API_KEY not set</p>
+                    <p className="mt-1 text-[10px] leading-relaxed text-amber-300/80">
+                      Claude Code cannot run site edits. SSH to the server and add
+                      <code className="mx-1 rounded bg-amber-500/10 px-1 py-0.5">ANTHROPIC_API_KEY=sk-ant-…</code>
+                      to <code className="rounded bg-amber-500/10 px-1 py-0.5">/opt/ai-os/.env</code>, then run:<br />
+                      <code className="mt-1 block rounded bg-amber-500/10 px-2 py-1">
+                        systemctl restart ai-os-hfm ai-os-sc
+                      </code>
+                    </p>
+                  </div>
+                )}
+
                 <div className="border-b p-4" style={{ borderColor: 'var(--theme-border)' }}>
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">
                     Describe a change
@@ -798,7 +924,7 @@ export function SiteStudioScreen() {
                   </div>
                   <button
                     onClick={() => editMutation.mutate(prompt.trim())}
-                    disabled={!prompt.trim() || editMutation.isPending}
+                    disabled={!prompt.trim() || editMutation.isPending || pipelinePhase !== 'idle'}
                     className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-semibold text-white disabled:opacity-40"
                     style={{ background: gradient, boxShadow: glow }}
                   >
@@ -808,13 +934,36 @@ export function SiteStudioScreen() {
                   </button>
                 </div>
 
+                {/* Pipeline status + live log */}
+                {pipelinePhase !== 'idle' && (
+                  <div className="border-b p-3" style={{ borderColor: 'var(--theme-border)' }}>
+                    <div className="mb-2 flex items-center gap-2">
+                      <HugeiconsIcon icon={Loading03Icon} size={12} className="animate-spin shrink-0" style={{ color: accent }} />
+                      <span className="text-[11px] font-semibold" style={{ color: accent }}>
+                        {PIPELINE_LABEL[pipelinePhase]}
+                      </span>
+                    </div>
+                    {log && (
+                      <div
+                        ref={logBoxRef}
+                        className="max-h-48 overflow-y-auto rounded-lg p-2"
+                        style={{ background: '#0d1117' }}
+                      >
+                        <pre className="whitespace-pre-wrap text-[9px] font-mono leading-relaxed" style={{ color: '#7ee787' }}>
+                          {log}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Edit history */}
                 <div className="flex-1 overflow-y-auto p-3">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--theme-muted)]">
                     Edit History
                   </p>
                   {enrichedEdits.length === 0 ? (
-                    <p className="py-4 text-center text-[12px] text-[var(--theme-muted)]">No edits yet</p>
+                    <p className="py-4 text-center text-[12px] text-[var(--theme-muted)]">No edits yet — describe a change above</p>
                   ) : (
                     <div className="flex flex-col gap-2">
                       {enrichedEdits.map(e => (
@@ -824,8 +973,8 @@ export function SiteStudioScreen() {
                   )}
                 </div>
 
-                {/* Build log */}
-                {buildOutput && (
+                {/* Build output (only shown for manual builds) */}
+                {buildOutput && pipelinePhase === 'idle' && (
                   <div className="border-t p-3" style={{ borderColor: 'var(--theme-border)' }}>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: buildOutput.ok ? '#10b981' : '#ef4444' }}>
@@ -842,7 +991,7 @@ export function SiteStudioScreen() {
                 )}
               </div>
 
-              {/* Preview iframe */}
+              {/* Preview iframe — uses internal proxy when server present */}
               <div className="flex min-w-0 flex-1 flex-col bg-[var(--theme-bg)]">
                 {status && !status.server ? (
                   <div className="flex flex-1 items-center justify-center p-8 text-center">
@@ -850,14 +999,14 @@ export function SiteStudioScreen() {
                       <HugeiconsIcon icon={Globe02Icon} size={40} className="mx-auto mb-4" style={{ color: accent, opacity: 0.3 }} />
                       <p className="text-[14px] font-semibold text-[var(--theme-text)]">Site Studio requires server repos</p>
                       <p className="mt-1 text-[12px] text-[var(--theme-muted)]">
-                        Edits and deploys run against staged site repos on the server, which aren't present here.
+                        Edits and deploys run against staged site repos on the VPS, which aren't present here.
                       </p>
                     </div>
                   </div>
-                ) : siteUrl ? (
+                ) : previewSrc ? (
                   <iframe
                     key={iframeKey}
-                    src={siteUrl}
+                    src={previewSrc}
                     className="h-full w-full border-0"
                     title={`Preview — ${current?.name}`}
                   />
@@ -870,17 +1019,19 @@ export function SiteStudioScreen() {
             </div>
           )}
 
-          {/* Preview tab — fullscreen iframe */}
+          {/* Preview tab — fullscreen */}
           {centerTab === 'preview' && (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex items-center gap-2 border-b px-4 py-2" style={{ borderColor: 'var(--theme-border)' }}>
-                <span className="text-[12px] font-mono text-[var(--theme-muted)] truncate flex-1">{siteUrl || 'No site URL'}</span>
+                <span className="flex-1 truncate text-[12px] font-mono text-[var(--theme-muted)]">
+                  {status?.server ? `/api/site-studio/${site}/preview/` : siteUrl || 'No site URL'}
+                </span>
                 <button onClick={() => setIframeKey(k => k + 1)} className="rounded-lg p-1 hover:bg-[var(--theme-hover)]">
                   <HugeiconsIcon icon={RefreshIcon} size={14} className="text-[var(--theme-muted)]" />
                 </button>
               </div>
-              {siteUrl ? (
-                <iframe key={`preview-${iframeKey}`} src={siteUrl} className="flex-1 border-0 w-full" title="Full preview" />
+              {previewSrc ? (
+                <iframe key={`preview-${iframeKey}`} src={previewSrc} className="flex-1 w-full border-0" title="Full preview" />
               ) : (
                 <div className="flex flex-1 items-center justify-center">
                   <p className="text-[13px] text-[var(--theme-muted)]">No live URL for selected site</p>
@@ -913,7 +1064,6 @@ export function SiteStudioScreen() {
           {/* Media tab */}
           {centerTab === 'media' && (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {/* Media sub-tabs */}
               <div className="flex items-center gap-4 border-b px-6 py-2" style={{ borderColor: 'var(--theme-border)' }}>
                 {([
                   { key: 'image' as const, label: 'Image Generation', icon: ImageAdd01Icon },
