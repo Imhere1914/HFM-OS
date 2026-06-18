@@ -735,8 +735,8 @@ export function SiteStudioScreen() {
     status: tasks.find(t => t.id === e.taskId)?.status,
   }))
 
-  // Preview URL: use internal proxy when on server (gives fresh view after each deploy)
-  const previewSrc = status?.server ? `/api/site-studio/${site}/preview` : siteUrl
+  // Preview URL: always use the live public URL (SPA proxy breaks client-side routing)
+  const previewSrc = siteUrl || null
 
   const handleNewArchiveItem = (type: ArchiveItemType) => {
     const name = window.prompt(`Name for new ${type === 'website' ? 'website' : 'landing page'}:`)
@@ -1043,7 +1043,7 @@ export function SiteStudioScreen() {
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex items-center gap-2 border-b px-4 py-2" style={{ borderColor: 'var(--theme-border)' }}>
                 <span className="flex-1 truncate text-[12px] font-mono text-[var(--theme-muted)]">
-                  {status?.server ? `/api/site-studio/${site}/preview` : siteUrl || 'No site URL'}
+                  {siteUrl || 'No site URL'}
                 </span>
                 <button onClick={() => setIframeKey(k => k + 1)} className="rounded-lg p-1 hover:bg-[var(--theme-hover)]">
                   <HugeiconsIcon icon={RefreshIcon} size={14} className="text-[var(--theme-muted)]" />
