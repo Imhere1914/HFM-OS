@@ -63,6 +63,7 @@ import { registerApiKeys } from './routes/api-keys'
 import { registerTestimonials } from './routes/testimonials'
 import { registerCommissions } from './routes/commissions'
 import { registerContracts } from './routes/contracts'
+import { registerAgreements } from './routes/agreements'
 import { registerInventory } from './routes/inventory'
 import { registerActivity } from './routes/activity'
 import { registerVideoCalls } from './routes/video-calls'
@@ -118,6 +119,7 @@ const PUBLIC_API_PREFIXES = [
   '/api/whatsapp/webhook',   // Meta verify + inbound (whatsapp.ts:70,83)
   '/api/affiliates/track/',  // public referral tracking (affiliates.ts:18)
   '/api/webchat',            // public web chat / lead-capture ingest (page-renderer.tsx)
+  '/api/agreements/sign/',   // public agreement view + sign by token (agreements.ts)
   '/api/contracts/sign/',    // public contract view + sign by token (contracts.ts:61,78)
   '/api/documents/shared/',  // shared doc lookup by token (documents.ts:39)
   '/api/training/public/',   // public training module by slug (training.ts:149)
@@ -202,6 +204,7 @@ const RATE_LIMIT_RULES: {
   { bucket: 'proposal_sign', method: 'POST', pattern: /^\/api\/proposals\/[^/]+\/sign$/, max: 10, windowMs: 60_000 },
   { bucket: 'proposal_respond', method: 'POST', pattern: /^\/api\/proposals\/[^/]+\/respond$/, max: 10, windowMs: 60_000 },
   { bucket: 'contract_sign', method: 'POST', pattern: /^\/api\/contracts\/sign\/[^/]+$/, max: 10, windowMs: 60_000 },
+  { bucket: 'agreement_sign', method: 'POST', pattern: /^\/api\/agreements\/sign\/[^/]+$/, max: 10, windowMs: 60_000 },
 ]
 
 app.use('/api/*', async (c, next) => {
@@ -306,6 +309,7 @@ registerApiKeys(app)
 registerTestimonials(app)
 registerCommissions(app)
 registerContracts(app)
+registerAgreements(app)
 registerInventory(app)
 registerActivity(app)
 registerVideoCalls(app)

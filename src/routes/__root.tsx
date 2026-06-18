@@ -28,6 +28,7 @@ import {
   DollarCircleIcon,
   FilterHorizontalIcon,
   SentIcon,
+  Agreement01Icon,
   DocumentValidationIcon,
   ContractsIcon,
   MegaphoneIcon,
@@ -103,6 +104,7 @@ export function navItems(brandId: string): { section: string; items: NavItem[] }
         { to: '/contacts', label: contactsLabel, icon: UserGroupIcon },
         { to: '/appointments', label: 'Appointments', icon: Calendar01Icon },
         { to: '/deals', label: 'Deals', icon: DollarCircleIcon },
+        { to: '/agreements', label: 'Agreements', icon: Agreement01Icon },
         { to: '/agents', label: 'Agent Swarm', icon: AiBrain01Icon },
         { to: '/team-chat', label: 'Team Chat', icon: BubbleChatIcon },
       ],
@@ -172,6 +174,7 @@ export function allNavItems(brandId: string): NavItem[] {
     { to: '/tickets', label: 'Help Desk', icon: CustomerService01Icon },
     { to: '/projects', label: projectsLabel, icon: Briefcase01Icon },
     { to: '/deals', label: 'Deals', icon: DollarCircleIcon },
+    { to: '/agreements', label: 'Agreements', icon: Agreement01Icon },
     { to: '/proposals', label: 'Proposals', icon: DocumentValidationIcon },
     { to: '/contracts', label: 'Contracts', icon: ContractsIcon },
     { to: '/automations', label: 'Automations', icon: FlowSquareIcon },
@@ -816,6 +819,7 @@ function isPublicRoute(pathname: string): boolean {
     pathname.startsWith('/docs') ||
     pathname.startsWith('/testimonial') ||
     pathname.startsWith('/contract/') ||
+    pathname.startsWith('/sign/') ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/learn') ||
     pathname.startsWith('/wellness')
