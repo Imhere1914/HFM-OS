@@ -54,6 +54,8 @@ async function createBooking(data: {
   brand: string
   contact_name: string
   contact_email: string
+  contact_phone: string
+  guests: string[]
   notes: string
   starts_at: string
   ends_at: string
@@ -88,7 +90,10 @@ function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [notes, setNotes] = useState('')
+  const [guests, setGuests] = useState<string[]>([])
+  const [guestInput, setGuestInput] = useState('')
   const [step, setStep] = useState<'calendar' | 'form' | 'done'>('calendar')
 
   const settings = settingsQuery.data as BookingSettings | undefined
@@ -136,6 +141,8 @@ function BookingPage() {
         brand,
         contact_name: name.trim(),
         contact_email: email.trim(),
+        contact_phone: phone.trim(),
+        guests,
         notes: notes.trim(),
         title: `Booking — ${name.trim()}`,
         starts_at: start.toISOString(),
@@ -222,6 +229,17 @@ function BookingPage() {
               />
             </div>
             <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Phone number</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2"
+                style={{ ['--tw-ring-color' as string]: `${accent}40` }}
+              />
+            </div>
+            <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">Notes (optional)</label>
               <textarea
                 value={notes}
@@ -231,6 +249,44 @@ function BookingPage() {
                 className="w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2"
                 style={{ ['--tw-ring-color' as string]: `${accent}40` }}
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Add guests (optional)</label>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={guestInput}
+                  onChange={e => setGuestInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && guestInput.trim()) {
+                      e.preventDefault()
+                      setGuests(g => [...g, guestInput.trim()])
+                      setGuestInput('')
+                    }
+                  }}
+                  placeholder="guest@email.com"
+                  className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2"
+                  style={{ ['--tw-ring-color' as string]: `${accent}40` }}
+                />
+                <button
+                  type="button"
+                  onClick={() => { if (guestInput.trim()) { setGuests(g => [...g, guestInput.trim()]); setGuestInput('') } }}
+                  className="rounded-xl px-3 py-2 text-xs font-semibold text-white"
+                  style={{ background: accent }}
+                >
+                  Add
+                </button>
+              </div>
+              {guests.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {guests.map((g, i) => (
+                    <span key={i} className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      {g}
+                      <button onClick={() => setGuests(gs => gs.filter((_, j) => j !== i))} className="text-gray-400 hover:text-gray-700">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

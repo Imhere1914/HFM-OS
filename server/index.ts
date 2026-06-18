@@ -93,6 +93,7 @@ import { registerOrchestrator } from './routes/orchestrator'
 import { registerDevAgents } from './routes/dev-agents'
 import { registerSelfUpdate } from './routes/self-update'
 import { registerSiteStudio } from './routes/site-studio'
+import { registerCalendars } from './routes/calendars'
 import { registerSocialIntel } from './routes/social-intel'
 import { registerProspecting } from './routes/prospecting'
 import { registerPreferences } from './routes/preferences'
@@ -161,6 +162,10 @@ const PUBLIC_API_RULES: { method: string; pattern: RegExp }[] = [
   // /learn page (learn-screen.tsx): enrollment + progress
   { method: 'POST', pattern: /^\/api\/training\/enroll$/ },
   { method: 'POST', pattern: /^\/api\/training\/progress$/ },
+  // /book page: public calendar lookup by id/slug
+  { method: 'GET', pattern: /^\/api\/calendars\/[^/]+$/ },
+  // site-studio preview proxy — public so the preview iframe loads without auth
+  { method: 'GET', pattern: /^\/api\/site-studio\/(sc|hfm)\/preview(\/.*)?$/ },
 ]
 
 function isPublicApiPath(path: string, method: string, url: URL): boolean {
@@ -335,6 +340,7 @@ registerOrchestrator(app)
 registerDevAgents(app)
 registerSelfUpdate(app)
 registerSiteStudio(app)
+registerCalendars(app)
 registerSocialIntel(app)
 registerProspecting(app)
 registerPreferences(app)

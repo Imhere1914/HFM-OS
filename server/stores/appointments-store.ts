@@ -21,6 +21,9 @@ export type AppointmentRecord = {
   brand: string
   contact_id: string | null
   contact_name: string | null
+  contact_email: string
+  contact_phone: string
+  guests: string[]
   title: string
   /** ISO datetime */
   starts_at: string
@@ -97,6 +100,9 @@ function normalize(
     brand: typeof a.brand === 'string' ? a.brand : process.env.BRAND ?? 'default',
     contact_id: a.contact_id ?? null,
     contact_name: a.contact_name ?? null,
+    contact_email: typeof a.contact_email === 'string' ? a.contact_email : '',
+    contact_phone: typeof a.contact_phone === 'string' ? a.contact_phone : '',
+    guests: Array.isArray(a.guests) ? a.guests : [],
     title: a.title,
     starts_at: a.starts_at,
     ends_at: a.ends_at ?? null,
