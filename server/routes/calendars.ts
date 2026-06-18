@@ -6,7 +6,38 @@ import {
 
 const BRAND = process.env.BRAND ?? 'default'
 
+const DEFAULT_DAYS = [
+  { day: 0 as const, enabled: false, start_time: '09:00', end_time: '17:00' },
+  { day: 1 as const, enabled: true,  start_time: '09:00', end_time: '17:00' },
+  { day: 2 as const, enabled: true,  start_time: '09:00', end_time: '17:00' },
+  { day: 3 as const, enabled: true,  start_time: '09:00', end_time: '17:00' },
+  { day: 4 as const, enabled: true,  start_time: '09:00', end_time: '17:00' },
+  { day: 5 as const, enabled: true,  start_time: '09:00', end_time: '17:00' },
+  { day: 6 as const, enabled: false, start_time: '09:00', end_time: '17:00' },
+]
+
+function seedDefaultCalendars(brand: string): void {
+  const existing = listCalendars(brand)
+  if (existing.length > 0) return
+
+  const isSC = brand === 'sc'
+  createCalendar(brand, {
+    name: isSC ? '30 Minute Meeting' : '30 Minute Consultation',
+    slug: '30-min',
+    duration_minutes: 30,
+    timezone: 'America/New_York',
+    days: DEFAULT_DAYS,
+    color: isSC ? '#22c55e' : '#a3843b',
+    meeting_type: 'video',
+    booking_window_days: 30,
+    is_active: true,
+  } satisfies Partial<CalendarDef>)
+}
+
 export function registerCalendars(app: Hono): void {
+  // Seed default calendars for known brands on startup
+  seedDefaultCalendars('sc')
+  seedDefaultCalendars('hfm')
   // GET /api/calendars — list all calendars for the current brand (authenticated)
   app.get('/api/calendars', (c) => {
     const brand = c.req.query('brand') ?? BRAND

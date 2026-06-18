@@ -3,7 +3,7 @@ import {
   createAppointment, deleteAppointment, getAppointment, isAppointmentStatus,
   listAppointments, updateAppointment,
 } from '../stores/appointments-store'
-import { getContact } from '../stores/contacts-store'
+import { getContact, createContact, listContacts } from '../stores/contacts-store'
 import { isEmailConfigured, sendEmail, renderTransactionalHtml } from '../stores/email-sender'
 import { triggerAutomations } from '../lib/automation-engine'
 import { eventBus } from '../lib/event-bus'
@@ -26,14 +26,16 @@ function formatApptTime(iso: string): string {
 async function sendAppointmentConfirmation(appt: {
   title: string; starts_at: string; ends_at: string | null
   location: string; notes: string; contact_id: string | null
+  contact_name: string | null; contact_email: string
 }) {
   if (!isEmailConfigured()) return
-  if (!appt.contact_id) return
-  const contact = getContact(appt.contact_id)
-  if (!contact?.email) return
+  // Use the email from the booking directly; fall back to the linked contact
+  const toEmail = appt.contact_email || (appt.contact_id ? getContact(appt.contact_id)?.email : null)
+  if (!toEmail) return
+  const toName = appt.contact_name || (appt.contact_id ? getContact(appt.contact_id)?.name : null) || 'there'
 
   const lines = [
-    `Hi **${contact.name}**,`,
+    `Hi **${toName}**,`,
     `Your appointment has been confirmed.`,
     `**${appt.title}**`,
     `📅 ${formatApptTime(appt.starts_at)}`,
@@ -44,7 +46,7 @@ async function sendAppointmentConfirmation(appt: {
   ]
 
   await sendEmail({
-    to: contact.email,
+    to: toEmail,
     subject: `Appointment confirmed: ${appt.title}`,
     html: renderTransactionalHtml({ brandName: BRAND_NAME, heading: 'Appointment Confirmed ✓', lines }),
   }).catch(e => console.warn('[appointments] confirmation email failed:', e))
@@ -83,11 +85,40 @@ export function registerAppointments(app: Hono): void {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     if (typeof b.title !== 'string' || !b.title) return c.json({ error: 'title is required' }, 400)
     if (typeof b.starts_at !== 'string' || !b.starts_at) return c.json({ error: 'starts_at is required' }, 400)
+
+    const contactName = typeof b.contact_name === 'string' ? b.contact_name : null
+    const contactEmail = typeof b.contact_email === 'string' ? b.contact_email.trim() : ''
+    const contactPhone = typeof b.contact_phone === 'string' ? b.contact_phone.trim() : ''
+    const guests = Array.isArray(b.guests) ? (b.guests as unknown[]).filter((g): g is string => typeof g === 'string') : []
+
+    // Auto-create or find a contact from booking data
+    let contactId = typeof b.contact_id === 'string' ? b.contact_id : null
+    if (!contactId && (contactEmail || contactName)) {
+      const existing = contactEmail
+        ? listContacts().find(ct => ct.email?.toLowerCase() === contactEmail.toLowerCase())
+        : null
+      if (existing) {
+        contactId = existing.id
+      } else if (contactName) {
+        const newContact = createContact({
+          name: contactName,
+          email: contactEmail || null,
+          phone: contactPhone || null,
+          source: 'manual',
+          brand: typeof b.brand === 'string' ? b.brand : BRAND,
+        })
+        contactId = newContact.id
+      }
+    }
+
     const appointment = createAppointment({
       title: b.title, starts_at: b.starts_at,
       ends_at: typeof b.ends_at === 'string' ? b.ends_at : null,
-      contact_id: typeof b.contact_id === 'string' ? b.contact_id : null,
-      contact_name: typeof b.contact_name === 'string' ? b.contact_name : null,
+      contact_id: contactId,
+      contact_name: contactName,
+      contact_email: contactEmail,
+      contact_phone: contactPhone,
+      guests,
       status: isAppointmentStatus(b.status) ? b.status : undefined,
       location: typeof b.location === 'string' ? b.location : '',
       notes: typeof b.notes === 'string' ? b.notes : '',

@@ -12,7 +12,50 @@ import { fetchAvailability } from '@/lib/scheduling-api'
 import type { BookingSettings, DayRule } from '@/lib/scheduling-api'
 import { cn } from '@/lib/utils'
 
-export const Route = createFileRoute('/book/$brand')({ component: BookingPage })
+// CalendarDef fields we care about on the booking page (inline — not imported from server)
+interface CalendarDef {
+  name: string
+  duration_minutes: number
+  buffer_before_minutes: number
+  buffer_after_minutes: number
+  booking_window_days: number
+  timezone: string
+  days: DayRule[]
+  blocked_dates: string[]   // YYYY-MM-DD
+  confirmation_message: string
+  color: string
+}
+
+async function fetchCalendar(brand: string, slug: string): Promise<BookingSettings> {
+  const url = new URL(`/api/calendars/${encodeURIComponent(slug)}`, location.origin)
+  url.searchParams.set('brand', brand)
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Calendar not found')
+  const cal = (await res.json()) as CalendarDef
+  // Bridge CalendarDef → BookingSettings shape
+  return {
+    brand,
+    duration_minutes: cal.duration_minutes,
+    buffer_before_minutes: cal.buffer_before_minutes,
+    buffer_after_minutes: cal.buffer_after_minutes,
+    max_per_day: 8,
+    booking_window_days: cal.booking_window_days,
+    timezone: cal.timezone,
+    days: cal.days,
+    confirmation_message: cal.confirmation_message,
+    // carry blocked_dates through for the calendar grid
+    // (stored in __calendarDef so the component can access it)
+    __blocked_dates: cal.blocked_dates,
+    updated_at: '',
+  } as BookingSettings & { __blocked_dates: string[] }
+}
+
+export const Route = createFileRoute('/book/$brand')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    calendar: typeof search['calendar'] === 'string' ? search['calendar'] : undefined,
+  }),
+  component: BookingPage,
+})
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,10 +117,14 @@ async function createBooking(data: {
 
 function BookingPage() {
   const { brand } = Route.useParams()
+  const { calendar: calendarSlug } = Route.useSearch()
 
   const settingsQuery = useQuery({
-    queryKey: ['public', 'availability', brand],
-    queryFn: () => fetchAvailability(brand),
+    queryKey: ['public', calendarSlug ? 'calendar' : 'availability', brand, calendarSlug],
+    queryFn: () =>
+      calendarSlug
+        ? fetchCalendar(brand, calendarSlug)
+        : fetchAvailability(brand),
     retry: 2,
   })
 
@@ -96,7 +143,8 @@ function BookingPage() {
   const [guestInput, setGuestInput] = useState('')
   const [step, setStep] = useState<'calendar' | 'form' | 'done'>('calendar')
 
-  const settings = settingsQuery.data as BookingSettings | undefined
+  const settings = settingsQuery.data as (BookingSettings & { __blocked_dates?: string[] }) | undefined
+  const blockedDates = settings?.__blocked_dates ?? []
 
   const windowEnd = useMemo(() => {
     if (!settings) return null
@@ -109,7 +157,11 @@ function BookingPage() {
     if (!settings || !windowEnd) return false
     if (d < today || d > windowEnd) return false
     const rule = settings.days.find(r => r.day === d.getDay())
-    return !!rule?.enabled
+    if (!rule?.enabled) return false
+    // Check blocked_dates (YYYY-MM-DD format)
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    if (blockedDates.includes(iso)) return false
+    return true
   }
 
   const slotsForDay = useMemo(() => {
