@@ -46,6 +46,7 @@ import {
   UserSearch01Icon,
   GridIcon,
   Mic01Icon,
+  SourceCodeIcon,
 } from '@hugeicons/core-free-icons'
 import { useQuery } from '@tanstack/react-query'
 import { useBrand } from '@/contexts/BrandContext'
@@ -105,7 +106,6 @@ export function navItems(brandId: string): { section: string; items: NavItem[] }
         { to: '/appointments', label: 'Appointments', icon: Calendar01Icon },
         { to: '/deals', label: 'Deals', icon: DollarCircleIcon },
         { to: '/agreements', label: 'Agreements', icon: Agreement01Icon },
-        { to: '/agents', label: 'Agent Swarm', icon: AiBrain01Icon },
         { to: '/team-chat', label: 'Team Chat', icon: BubbleChatIcon },
       ],
     },
@@ -129,6 +129,13 @@ export function navItems(brandId: string): { section: string; items: NavItem[] }
       items: [
         { to: '/finance', label: 'Finance', icon: CoinsDollarIcon },
         { to: '/projects', label: projectsLabel, icon: Briefcase01Icon },
+      ],
+    },
+    {
+      section: 'Developer',
+      items: [
+        { to: '/dev-studio', label: 'Dev Studio', icon: SourceCodeIcon },
+        { to: '/agents', label: 'Agent Swarm', icon: AiBrain01Icon },
       ],
     },
   ]
@@ -179,6 +186,7 @@ export function allNavItems(brandId: string): NavItem[] {
     { to: '/contracts', label: 'Contracts', icon: ContractsIcon },
     { to: '/automations', label: 'Automations', icon: FlowSquareIcon },
     { to: '/reports', label: 'Reports', icon: BarChartIcon },
+    { to: '/dev-studio', label: 'Dev Studio', icon: SourceCodeIcon },
     { to: '/settings', label: 'Settings', icon: Settings02Icon },
   ]
 }
@@ -477,30 +485,36 @@ function Sidebar({ onNavigate, onOpenLauncher }: { onNavigate?: () => void; onOp
 
       <GlobalSearch />
       <HermesOrb onNavigate={onNavigate} />
-      <nav className="flex-1 overflow-y-auto px-2.5 pb-2">
+      <nav aria-label="Main navigation" className="flex-1 overflow-y-auto px-2.5 pb-2">
         {sections.map((sec) => (
-          <div key={sec.section || '_top'} className="mb-3">
+          <div key={sec.section || '_top'} className="mb-3" role="group" aria-label={sec.section || 'Main'}>
             {sec.section && (
-              <div className="mb-1.5 flex items-center gap-2 px-2.5">
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--theme-muted)] opacity-80">
+              <div className="mb-1.5 flex items-center gap-2 px-2.5" aria-hidden="true">
+                <span className={cn(
+                  "text-[9px] font-semibold uppercase tracking-[0.14em] opacity-80",
+                  sec.section === 'Developer' ? 'text-[var(--theme-accent)]' : 'text-[var(--theme-muted)]'
+                )}>
                   {sec.section}
                 </span>
                 <span
                   className="h-px flex-1"
-                  style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${c.accent} 30%, var(--theme-border)), transparent)` }}
+                  style={{ background: `linear-gradient(90deg, color-mix(in srgb, ${sec.section === 'Developer' ? c.accent : c.accent} 30%, var(--theme-border)), transparent)` }}
                 />
               </div>
             )}
             {sec.items.map((item) => {
               const active = isActive(item.to)
+              const isDev = sec.section === 'Developer'
               return (
                 <Link
                   key={item.to}
                   to={item.to}
                   onClick={onNavigate}
                   data-active={active}
+                  aria-current={active ? 'page' : undefined}
                   className={cn(
                     'cine-nav-item group relative flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-[450]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--theme-sidebar-bg)]',
                     active
                       ? 'text-[var(--theme-accent)]'
                       : 'text-[var(--theme-muted)] hover:text-[var(--theme-accent)]',
@@ -524,11 +538,13 @@ function Sidebar({ onNavigate, onOpenLauncher }: { onNavigate?: () => void; onOp
                     style={
                       active
                         ? {
-                            background: c.gradient,
+                            background: isDev ? `linear-gradient(135deg, #7c3aed, #4f46e5)` : c.gradient,
                             color: 'white',
                             boxShadow: `0 2px 10px color-mix(in srgb, ${c.glow} 42%, transparent)`,
                           }
-                        : { background: 'var(--theme-hover)' }
+                        : isDev
+                          ? { background: 'color-mix(in srgb, #7c3aed 12%, var(--theme-hover))' }
+                          : { background: 'var(--theme-hover)' }
                     }
                   >
                     <HugeiconsIcon icon={item.icon} size={14} strokeWidth={active ? 2 : 1.7} />
@@ -539,6 +555,7 @@ function Sidebar({ onNavigate, onOpenLauncher }: { onNavigate?: () => void; onOp
                     <span
                       className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none text-white"
                       style={{ background: 'var(--theme-accent)' }}
+                      aria-label={`${unreadCount} unread`}
                     >
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
@@ -892,6 +909,13 @@ function RootLayout() {
 
   return (
     <>
+    {/* Skip-to-content link for keyboard/screen reader users */}
+    <a
+      href="#main-content"
+      className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999] focus:rounded-lg focus:bg-[var(--theme-accent)] focus:px-4 focus:py-2 focus:text-[13px] focus:font-semibold focus:text-white focus:shadow-xl focus:outline-none"
+    >
+      Skip to main content
+    </a>
     <AmbientBackground intensity={ambientIntensity} />
     <CommandPalette open={cmdOpen} onClose={cmdClose} />
     <AppLauncher open={launcherOpen} onClose={closeLauncher} />
@@ -901,7 +925,7 @@ function RootLayout() {
         glass veil (.cine-screen) keeps content legible over it. */}
     <div className="flex h-screen overflow-hidden">
       {/* Desktop sidebar */}
-      <aside className="hidden md:block">
+      <aside className="hidden md:block" aria-label="Application sidebar">
         <Sidebar onOpenLauncher={openLauncher} />
       </aside>
 
@@ -952,7 +976,7 @@ function RootLayout() {
           <NotificationsBell />
         </div>
         {/* Bottom padding for mobile nav bar */}
-        <main className="min-h-0 flex-1 overflow-hidden pb-16 md:pb-0">
+        <main id="main-content" className="min-h-0 flex-1 overflow-hidden pb-16 md:pb-0">
           {/* Shared glass veil for ALL routed screens (except the cinematic
               home, which wants the full aurora). Lets the ambient read through
               while keeping content AA-legible — applied once here, not per
