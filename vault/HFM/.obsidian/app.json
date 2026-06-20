@@ -1,0 +1,10 @@
+{
+  "promptDelete": false,
+  "trashOption": "local",
+  "legacyEditor": false,
+  "defaultViewMode": "source",
+  "livePreview": true,
+  "newFileLocation": "current",
+  "strictLineBreaks": false,
+  "showFrontmatter": false
+}
